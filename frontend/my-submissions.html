@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iPeek — My Submissions</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body style="visibility:hidden;">
+  <!-- Top navigation bar -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <div class="nav-logo">i</div>
+      Research Repository
+    </div>
+    <div class="nav-links"></div>
+    <div class="nav-right">
+      <a href="profile.html" class="avatar" id="avatarEl" title="View Profile"></a>
+      <span class="role-pill" id="rolePill"></span>
+      <button class="btn btn-ghost btn-sm" onclick="logout()">Sign Out</button>
+    </div>
+  </nav>
+
+  <!-- Single-column content area -->
+  <div class="main" style="max-width:820px;margin:0 auto;">
+
+    <div class="hero" style="margin-bottom:16px;">
+      <div>
+        <h2>My Submissions</h2>
+        <p>Track the status of research you've submitted</p>
+      </div>
+    </div>
+
+    <!-- Populated by my-submissions.js -->
+    <div id="subList"></div>
+
+    <!-- Empty state -->
+    <div id="empty" class="text-center" style="display:none;padding:60px 0;color:var(--muted);">
+      <div style="font-size:2rem;margin-bottom:10px;">📭</div>
+      <p>You haven't submitted any research yet.</p>
+      <button class="btn btn-primary" style="margin-top:14px;" onclick="location.href='upload.html'">
+        📤 Submit Your First Paper
+      </button>
+    </div>
+
+    <!-- Loading state -->
+    <div id="loading" class="text-center" style="padding:60px 0;color:var(--muted);">
+      <div class="spinner" style="margin:0 auto 12px;width:28px;height:28px;"></div>
+      <p>Loading your submissions...</p>
+    </div>
+
+  </div>
+
+  <!-- Toast notification container -->
+  <div class="toast-wrap" id="toasts"></div>
+  <!-- Shared API layer -->
+   <script src="js/pillnav.js"></script>
+   <script src="js/motion.js">
+   </script>
+  <script src="js/api.js"></script>
+  <!-- My Submissions page logic -->
+  <script src="js/my-submissions.js"></script>
+  <script>
+    async function logout() {
+      try { await apiLogout(); } catch {}
+      sessionStorage.clear();
+      window.location.replace("index.html");
+    }
+  </script>
+</body>
+</html>

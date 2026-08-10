@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iPeek — Sign In</title>
+  <!-- All styles come from style.css — no inline styles here -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="login-bg">
+  <div class="page-ambient" id="ambientBg"></div>
+  <div class="login-box">
+
+    <!-- Brand logo and app name -->
+    <div class="login-brand">
+      <div class="login-logo">i</div>
+      <h1>iPeek</h1>
+      <p>Centralized Digital Repository System</p>
+    </div>
+
+    <!-- Role selector: Student / Librarian / Admin -->
+    <div class="role-tabs">
+      <button class="role-tab active" onclick="setRole('student', this)">Student</button>
+      <button class="role-tab" onclick="setRole('librarian', this)">Librarian</button>
+    </div>
+
+    <!-- Error message box (hidden by default, shown on failed login) -->
+    <div class="err-box" id="err"></div>
+
+    <!-- ID / username field -->
+    <label class="login-label" id="idLbl">Student ID / Username</label>
+    <input class="login-input" id="uid" type="text" placeholder="2021-10456">
+
+    <!-- Password field -->
+    <label class="login-label">Password</label>
+    <input class="login-input" id="pwd" type="password" placeholder="••••••••">
+
+    <!-- Sign in button -->
+    <button class="btn-sign" onclick="login()">Sign In to Repository</button>
+
+    <!-- Forgot password note -->
+    <div class="login-foot">Forgot password? Contact your librarian.</div>
+
+  </div>
+
+  <!-- Toast notification container -->
+  <div class="toast-wrap" id="toasts"></div>
+
+  <!-- Shared API layer -->
+  <script src="js/api.js"></script>
+  <!-- Login page logic -->
+  <script src="js/login.js"></script>
+<script src="js/motion.js"></script>
+<script>
+  initAmbientBackground(document.getElementById("ambientBg"), 500);
+</script>
+
+</body>
+</html>

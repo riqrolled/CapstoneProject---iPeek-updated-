@@ -1,0 +1,132 @@
+from datetime import datetime
+from typing import Optional, List
+
+from pydantic import BaseModel, EmailStr
+
+from models import RoleEnum, StatusEnum
+
+
+# ---------- Users / Auth ----------
+
+class UserCreate(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    fullname: str
+    role: RoleEnum
+    department: Optional[str] = None
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    email: EmailStr
+    fullname: str
+    role: RoleEnum
+    department: Optional[str] = None
+    contact: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserUpdate(BaseModel):
+    fullname: str
+    email: EmailStr
+    contact: Optional[str] = None
+
+
+class PasswordUpdate(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    role: RoleEnum
+    fullname: str
+
+
+# ---------- Research ----------
+
+class ResearchOut(BaseModel):
+    id: int
+    title: str
+    year: Optional[int] = None
+    authors: str
+    department: str
+    abstract: Optional[str] = None
+    source_stem: str
+    status: StatusEnum
+    feedback_note: Optional[str] = None
+    student_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ValidateResearch(BaseModel):
+    approve: bool
+    feedback_message: Optional[str] = None
+
+
+class UploadPreviewOut(BaseModel):
+    preview_id: str
+    warnings: list
+    has_warnings: bool
+    resubmission: bool
+    ai_metadata: dict
+    source: str
+    filename: str
+
+
+class UploadConfirmIn(BaseModel):
+    preview_id: str
+    final_values: dict
+
+
+# ---------- Feedback ----------
+
+class FeedbackOut(BaseModel):
+    id: int
+    research_id: int
+    librarian_id: int
+    message: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Dashboard ----------
+
+class DashboardStats(BaseModel):
+    total_research: int
+    approved_research: int
+    ongoing_research: int
+    rejected_research: int
+
+
+# ---------- AI ----------
+
+class AIAnalysisOut(BaseModel):
+    id: int
+    research_id: int
+    summary: Optional[str] = None
+    similar_studies: Optional[str] = None
+    research_gaps: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ChatIn(BaseModel):
+    question: str
+    history: Optional[List[dict]] = None
+
+
+class ChatOut(BaseModel):
+    result: str
+    sources: list

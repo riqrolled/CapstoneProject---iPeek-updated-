@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iPeek — Submit Research</title>
+  <!-- All styles from style.css — no inline styles -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body style="visibility:hidden;">
+  <!-- Top navigation bar -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <div class="nav-logo">i</div>
+      Research Repository
+    </div>
+    <div class="nav-links">
+      <a class="nav-link" href="browse.html">Browse Research</a>
+      <a class="nav-link active" href="upload.html">Submit Proposal</a>
+    </div>
+    <div class="nav-right">
+    <a href="profile.html" class="avatar" id="avatarEl" title="View Profile"></a>
+    <span class="role-pill" id="rolePill"></span>
+    <button class="btn btn-ghost btn-sm" onclick="logout()">Sign Out</button>
+  </div>
+  </nav>
+
+  <!-- Centered single-column upload form -->
+  <div class="upload-wrap">
+    <div class="card">
+
+      <!-- Page header -->
+      <div style="margin-bottom:24px;">
+        <h2 style="font-size:1.05rem;margin-bottom:4px;">📤 Upload Research Paper</h2>
+        <p class="text-muted" style="font-size:0.8rem;">Submit your research for librarian review and AI analysis</p>
+      </div>
+
+      <!-- Step indicator bar — controlled by upload.js -->
+      <div class="steps">
+        <div class="step active" id="step1">
+          <div class="step-dot">1</div>
+          Research Info
+        </div>
+        <div class="step-line"></div>
+        <div class="step" id="step2">
+          <div class="step-dot">2</div>
+          Documents
+        </div>
+        <div class="step-line"></div>
+        <div class="step" id="step3">
+          <div class="step-dot">3</div>
+          Submit
+        </div>
+      </div>
+
+      <!-- ── Step 1: Research Info ── -->
+      <div id="panel1">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Research Title</label>
+            <input class="form-input" id="resTitle" placeholder="Full research title">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Field / Department</label>
+            <select class="form-input" id="resDept">
+              <option>College of Engineering and Architecture</option>
+              <option>College of Computing and Informatics</option>
+              <option>College of Arts and Sciences</option>
+              <option>College of Industrial Technology</option>
+              <option>College of Education</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">School Year</label>
+            <input class="form-input" id="resYear" placeholder="2024 – 2025">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Research Members</label>
+          <input class="form-input" id="resMembers" placeholder="Santos, J. · Lim, C. · Dela Cruz, K.">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Abstract / Description</label>
+          <textarea class="form-input" id="resAbstract" rows="4"
+            placeholder="Brief description of the study, objectives, and methodology..."></textarea>
+        </div>
+        <div class="form-actions">
+          <div></div>
+          <button class="btn btn-primary" onclick="goStep(2)">Continue to Documents →</button>
+        </div>
+      </div>
+
+      <!-- ── Step 2: Document Upload ── -->
+      <div id="panel2" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">Upload Research Document (PDF)</label>
+
+          <!-- Drag and drop zone -->
+          <div class="drop-zone" id="dropZone"
+               onclick="document.getElementById('fileInput').click()"
+               ondragover="dragOver(event)"
+               ondragleave="dragLeave(event)"
+               ondrop="dropped(event)">
+            <div class="drop-icon">📄</div>
+            <div class="drop-text">
+              <strong>Drag &amp; drop your PDF here</strong><br>
+              or <span>click to browse files</span> — max 25MB
+            </div>
+            <!-- Hidden file input triggered by clicking the drop zone -->
+            <input type="file" id="fileInput" accept=".pdf"
+                   style="display:none" onchange="fileChosen(event)">
+          </div>
+
+          <!-- File info bar shown after a file is selected -->
+          <div id="fileInfo" style="display:none;margin-top:10px;padding:10px 14px;
+               background:var(--bg);border-radius:7px;border:1px solid var(--border);
+               display:flex;align-items:center;gap:10px;font-size:0.84rem;">
+            <span>📄</span>
+            <span id="fileName" style="flex:1;font-weight:600;"></span>
+            <span id="fileSize" style="color:var(--muted);"></span>
+            <button onclick="clearFile()"
+                    style="border:none;background:none;cursor:pointer;color:var(--danger);">✕</button>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-ghost" onclick="goStep(1)">← Back</button>
+          <button class="btn btn-primary" onclick="goStep(3)">Continue to Submit →</button>
+        </div>
+      </div>
+
+      <!-- ── Step 3: Review and Submit ── -->
+      <div id="panel3" style="display:none;">
+        <!-- Summary of entered info -->
+        <div style="background:var(--bg);border-radius:var(--radius);padding:18px;margin-bottom:18px;">
+          <h3 style="margin-bottom:12px;font-size:0.92rem;">Review Your Submission</h3>
+          <div style="font-size:0.84rem;display:grid;gap:6px;">
+            <div><span class="text-muted">Title:</span> <strong id="reviewTitle">—</strong></div>
+            <div><span class="text-muted">Department:</span> <strong id="reviewDept">—</strong></div>
+            <div><span class="text-muted">Members:</span> <strong id="reviewMembers">—</strong></div>
+            <div><span class="text-muted">File:</span> <strong id="reviewFile">—</strong></div>
+          </div>
+        </div>
+
+        <!-- Success/error status message shown after submit -->
+        <div id="submitStatus" style="display:none;margin-bottom:14px;"></div>
+        <!-- Success/error status message shown after submit -->
+        <div id="submitStatus" style="display:none;margin-bottom:14px;"></div>
+
+        <!-- Discrepancy warning panel — shown only if AI extraction differs
+             from what the student typed. Populated by upload.js -->
+        <div id="discrepancyPanel" style="display:none;margin-bottom:18px;"></div>
+
+        <div class="form-actions">
+        <div class="form-actions">
+          <button class="btn btn-ghost" onclick="goStep(2)">← Back</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost" onclick="saveDraft()">Save Draft</button>
+            <button class="btn btn-accent btn-lg" id="submitBtn" onclick="submitPaper()">
+              Submit Research →
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Toast notification container -->
+  <div class="toast-wrap" id="toasts"></div>
+
+  <!-- Shared API layer -->
+  <script src="js/api.js"></script>
+  <script src="js/pillnav.js"></script>
+  <script src="js/motion.js">
+  </script>
+  <!-- Upload form logic -->
+  <script src="js/upload.js"></script>
+  
+  <script>
+    async function logout() {
+      try { await apiLogout(); } catch {}
+      sessionStorage.clear();
+      window.location.replace("index.html");
+    }
+    
+  </script>
+  
+</body>
+</html>
