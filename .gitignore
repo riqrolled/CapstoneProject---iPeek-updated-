@@ -3,18 +3,3 @@ backend/venv/
 .env
 .env.*
 
-# Python
-__pycache__/
-*.py[cod]
-
-# Local database
-*.db
-*.sqlite
-*.sqlite3
-
-# Chroma / vector database
-chroma_db/
-
-# IDE
-.vscode/
-.idea/
