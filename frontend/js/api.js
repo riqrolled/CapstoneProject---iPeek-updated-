@@ -100,6 +100,7 @@ function apiAuthHeaderForPdf() {
 
 async function apiLogin(username, password) {
   const body = new URLSearchParams();
+  body.append("grant_type", "password");
   body.append("username", username);
   body.append("password", password);
 
