@@ -17,7 +17,7 @@ router = APIRouter(prefix="/repository", tags=["Repository"])
 @router.get("/{source_stem}/pdf")
 async def get_pdf(
     source_stem: str,
-    current_user: User = Depends(require_role("student", "librarian")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Research).where(Research.source_stem == source_stem))
@@ -38,7 +38,7 @@ async def upload_preview(
     year: str = Form(""),
     members: str = Form(""),
     abstract: str = Form(""),
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "faculty")),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -53,7 +53,7 @@ async def upload_preview(
 @router.post("/upload/confirm")
 async def upload_confirm(
     payload: UploadConfirmIn,
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "faculty")),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -64,7 +64,7 @@ async def upload_confirm(
 
 @router.get("/browse", response_model=List[ResearchOut])
 async def browse_repository(
-    current_user: User = Depends(require_role("student", "librarian", "admin")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Research).where(Research.status == StatusEnum.approved))
@@ -74,7 +74,7 @@ async def browse_repository(
 @router.get("/search", response_model=List[ResearchOut])
 async def search_research(
     q: Optional[str] = None,
-    current_user: User = Depends(require_role("student", "librarian")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Research).where(Research.status == StatusEnum.approved)
@@ -87,7 +87,7 @@ async def search_research(
 @router.get("/{source_stem}/detail", response_model=ResearchOut)
 async def get_research_detail(
     source_stem: str,
-    current_user: User = Depends(require_role("student", "librarian")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Research).where(Research.source_stem == source_stem))
@@ -99,7 +99,7 @@ async def get_research_detail(
 
 @router.get("/my-uploads", response_model=List[ResearchOut])
 async def my_uploads(
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "faculty")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Research).where(Research.student_id == current_user.id))
@@ -109,7 +109,7 @@ async def my_uploads(
 @router.get("/{research_id}/feedback", response_model=List[FeedbackOut])
 async def check_feedback(
     research_id: int,
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "faculty")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(

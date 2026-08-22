@@ -22,7 +22,7 @@ async def _get_research_or_404(research_id: int, db: AsyncSession) -> Research:
 @router.post("/{research_id}/similarity", response_model=ChatOut)
 async def analyze_similarity(
     research_id: int,
-    current_user: User = Depends(require_role("student", "librarian")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     research = await _get_research_or_404(research_id, db)
@@ -33,7 +33,7 @@ async def analyze_similarity(
 @router.post("/{research_id}/summary", response_model=ChatOut)
 async def analyze_summary(
     research_id: int,
-    current_user: User = Depends(require_role("student", "librarian")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     research = await _get_research_or_404(research_id, db)
@@ -44,7 +44,7 @@ async def analyze_summary(
 @router.post("/{research_id}/gaps", response_model=ChatOut)
 async def analyze_gaps(
     research_id: int,
-    current_user: User = Depends(require_role("student", "librarian")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     research = await _get_research_or_404(research_id, db)
@@ -55,7 +55,7 @@ async def analyze_gaps(
 @router.post("/chat", response_model=ChatOut)
 async def chat(
     payload: ChatIn,
-    current_user: User = Depends(require_role("student", "librarian")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     return await rag_service.chat(payload.question, payload.history or [], db)
