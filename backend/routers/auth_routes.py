@@ -10,26 +10,60 @@ from config import LOGIN_RATE_LIMIT
 from database import get_db
 from dependencies import get_current_user
 from models import User
-from schemas import PasswordUpdate, Token, UserCreate, UserOut, UserUpdate
+from schemas import OTPRequest, OTPVerify, PasswordUpdate, Token, UserCreate, UserOut, UserUpdate
+from services.otp_service import otp_service, determine_role_from_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 limiter = Limiter(key_func=get_remote_address)
 
 
+@router.post("/register/request-otp")
+@limiter.limit("3/minute")  # prevents someone spamming a stranger's inbox
+async def request_otp(request: Request, payload: OTPRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        await otp_service.request_otp(payload.email, db)
+        return {"success": True, "message": "Verification code sent."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/register/verify-otp")
+async def verify_otp(payload: OTPVerify, db: AsyncSession = Depends(get_db)):
+    try:
+        await otp_service.verify_otp(payload.email, payload.code, db)
+        return {"success": True, "message": "Email verified."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/register", response_model=UserOut)
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(User).where((User.username == user_in.username) | (User.email == user_in.email))
-    )
+    """
+    Institutional email doubles as the username (set below) — students
+    and staff get an ISAT-U email issued by the school, so it's already
+    guaranteed unique, and it's what they'll actually remember to log
+    in with. Role is never trusted from the client; it's derived from
+    the email domain (determine_role_from_email), and account creation
+    is gated on having completed OTP verification for that email first.
+    """
+    if not await otp_service.is_email_verified(user_in.email, db):
+        raise HTTPException(status_code=400, detail="Please verify your email before registering.")
+
+    try:
+        role = determine_role_from_email(user_in.email)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    result = await db.execute(select(User).where(User.email == user_in.email))
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Username or email already registered")
+        raise HTTPException(status_code=400, detail="This email is already registered")
 
     user = User(
-        username=user_in.username,
+        username=user_in.email,  # institutional email doubles as the username
         email=user_in.email,
         password_hash=hash_password(user_in.password),
         fullname=user_in.fullname,
-        role=user_in.role,
+        role=role,
         department=user_in.department,
     )
     db.add(user)
@@ -45,7 +79,13 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.username == form_data.username))
+    # form_data.username holds whatever the client sent — in practice,
+    # the institutional email, since that's now the account's username.
+    # Normalized here because OAuth2PasswordRequestForm is a plain form
+    # field, not run through the EmailStr/_EmailNormalizedBase validator
+    # that schemas.py applies everywhere else.
+    normalized_username = form_data.username.strip().lower()
+    result = await db.execute(select(User).where(User.username == normalized_username))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(form_data.password, user.password_hash):
@@ -62,8 +102,7 @@ async def login(
 async def get_me(current_user: User = Depends(get_current_user)):
     """
     Decodes the caller's JWT and returns their profile. Frontend calls
-    this on every page load — the equivalent of the old system's
-    GET /api/auth/me — to confirm who's logged in and drive the navbar.
+    this on every page load to confirm who's logged in and drive the navbar.
     """
     return current_user
 

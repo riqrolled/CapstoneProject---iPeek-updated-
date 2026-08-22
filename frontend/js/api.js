@@ -18,12 +18,33 @@
  * Cleared on logout via sessionStorage.clear() (already done in every
  * page's inline logout() script).
  */
+/**
+ * api.js
+ * ------
+ * ADAPTER LAYER for the FastAPI/JWT backend.
+ *
+ * Every exported function keeps a stable name/shape so page scripts
+ * never talk to the raw backend directly — only to this file.
+ *
+ * TOKEN STORAGE: JWT stored in sessionStorage under "ipeek_token".
+ * Cleared on logout via sessionStorage.clear().
+ *
+ * ADDED: apiRequestOtp / apiVerifyOtp / apiRegister — the three calls
+ * behind the new registration flow in login.js. Role is never sent by
+ * the client in apiRegister(); the backend derives it from the email
+ * domain. See services/otp_service.py::determine_role_from_email().
+ */
 
 const API_BASE = "http://localhost:8000";
 
-/* ── Nav link sets (unchanged from before) ──────────────────────────── */
+/* ── Nav link sets ──────────────────────────────────────────────────── */
 const NAV_LINKS = {
   student: [
+    { href: "browse.html",  label: "Browse Research",  id: "browse"  },
+    { href: "upload.html",  label: "Submit Proposal",  id: "upload"  },
+    { href: "my-submissions.html", label: "My Submissions",    id: "my-submissions" },
+  ],
+  faculty: [
     { href: "browse.html",  label: "Browse Research",  id: "browse"  },
     { href: "upload.html",  label: "Submit Proposal",  id: "upload"  },
     { href: "my-submissions.html", label: "My Submissions",    id: "my-submissions" },
@@ -87,11 +108,6 @@ function _authHeaders() {
   return token ? { "Authorization": `Bearer ${token}` } : {};
 }
 
-/**
- * Returns the bearer auth header object, for use by pdfjsLib's
- * httpHeaders option (PDF.js can't use fetch()/apiFetch — it loads
- * the PDF itself, so it needs the header passed directly).
- */
 function apiAuthHeaderForPdf() {
   return _authHeaders();
 }
@@ -100,7 +116,6 @@ function apiAuthHeaderForPdf() {
 
 async function apiLogin(username, password) {
   const body = new URLSearchParams();
-  body.append("grant_type", "password");
   body.append("username", username);
   body.append("password", password);
 
@@ -116,7 +131,6 @@ async function apiLogin(username, password) {
   return { success: true, role: d.role, full_name: d.fullname };
 }
 
-/** No server-side session to invalidate with JWT — this is a client-side no-op. */
 async function apiLogout() {
   return { success: true };
 }
@@ -161,6 +175,45 @@ async function apiUpdatePassword(currentPassword, newPassword) {
   return d;
 }
 
+/* ── Registration (OTP flow) ────────────────────────────────────────── */
+/* No auth headers needed on any of these three — the user isn't logged
+   in yet during registration. Note apiRegister() never sends a "role"
+   field: the server derives it from the email domain, and would ignore
+   a client-supplied role even if one were sent. */
+
+async function apiRequestOtp(email) {
+  const r = await fetch(`${API_BASE}/auth/register/request-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.detail || "Could not send verification code.");
+  return d;
+}
+
+async function apiVerifyOtp(email, code) {
+  const r = await fetch(`${API_BASE}/auth/register/verify-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.detail || "Verification failed.");
+  return d;
+}
+
+async function apiRegister({ email, password, fullname, department }) {
+  const r = await fetch(`${API_BASE}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, fullname, department: department || null }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.detail || "Registration failed.");
+  return d;
+}
+
 /* ── Ingest (upload preview/confirm) ────────────────────────────────── */
 
 async function apiIngestPreview(file, formData) {
@@ -193,7 +246,7 @@ async function apiIngestConfirm(previewId, finalValues) {
   return d;
 }
 
-/* ── RAG Analysis — now keyed by numeric research_id, not source_stem ── */
+/* ── RAG Analysis ────────────────────────────────────────────────────── */
 
 async function apiSimilarity(researchId) {
   const r = await fetch(`${API_BASE}/ai/${researchId}/similarity`, {
@@ -245,7 +298,7 @@ function _mapResearch(item) {
     school_year:      item.year ? String(item.year) : "Unknown",
     college:          item.department,
     department:       item.department,
-    keywords:         "",   // no column in new schema — tags simply won't render
+    keywords:         "",
     abstract:         item.abstract || "",
     source:           item.source_stem,
     source_stem:      item.source_stem,
@@ -271,7 +324,6 @@ async function apiDocumentDetail(source) {
   return _mapResearch(d);
 }
 
-/** No chunk-count endpoint in the new backend — resolves to a harmless no-op shape. */
 async function apiStatus() {
   return { status: "ok", chunks_indexed: 0, message: "" };
 }
@@ -280,11 +332,6 @@ function apiPdfUrl(source) {
   return `${API_BASE}/repository/${encodeURIComponent(source)}/pdf`;
 }
 
-/**
- * Merges the old separate apiApprove()+apiReview() into the new backend's
- * single /validate call. action is "validated" or "returned" for
- * call-site compatibility with review.js's existing wording.
- */
 async function apiValidateResearch(researchId, action, comments) {
   const r = await fetch(`${API_BASE}/admin/repository/${researchId}/validate`, {
     method: "POST",
@@ -296,7 +343,6 @@ async function apiValidateResearch(researchId, action, comments) {
   return d;
 }
 
-/** Now takes the numeric research id, not source_stem. */
 async function apiDeletePaper(id) {
   const r = await fetch(`${API_BASE}/admin/repository/${id}`, {
     method: "DELETE", headers: _authHeaders(),
@@ -320,7 +366,7 @@ async function apiMySubmissions() {
   return { submissions: d.map(_mapResearch) };
 }
 
-/* ── Toast helper (unchanged) ───────────────────────────────────────── */
+/* ── Toast helper ────────────────────────────────────────────────────── */
 
 function toast(msg, type = "info", duration = 3500) {
   const wrap = document.getElementById("toasts");

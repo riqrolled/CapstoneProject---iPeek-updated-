@@ -3,57 +3,477 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>iPeek — Sign In</title>
-  <!-- All styles come from style.css — no inline styles here -->
+
   <link rel="stylesheet" href="css/style.css">
 </head>
+
 <body class="login-bg">
+
   <div class="page-ambient" id="ambientBg"></div>
+
   <div class="login-box">
 
-    <!-- Brand logo and app name -->
+    <!-- ============================================================
+         BRAND
+    ============================================================= -->
     <div class="login-brand">
       <div class="login-logo">i</div>
+
       <h1>iPeek</h1>
+
       <p>Centralized Digital Repository System</p>
     </div>
 
-    <!-- Role selector: Student / Librarian / Admin -->
-    <div class="role-tabs">
-      <button class="role-tab active" onclick="setRole('student', this)">Student</button>
-      <button class="role-tab" onclick="setRole('librarian', this)">Librarian</button>
+
+    <!-- ============================================================
+         SIGN IN PANEL
+    ============================================================= -->
+    <div id="loginPanel">
+
+      <div class="err-box" id="loginErr"></div>
+
+      <label class="login-label">
+        Institutional Email
+      </label>
+
+      <input
+        class="login-input"
+        id="loginUid"
+        type="email"
+        placeholder="you@students.isatu.edu.ph"
+      >
+
+      <label class="login-label">
+        Password
+      </label>
+
+      <input
+        class="login-input"
+        id="loginPwd"
+        type="password"
+        placeholder="••••••••"
+      >
+
+      <!-- IMPORTANT:
+           type="button" prevents accidental form submission -->
+      <button
+        type="button"
+        class="btn-sign"
+        id="loginBtn"
+      >
+        Sign In to Repository
+      </button>
+
+      <div class="login-foot">
+        Don't have an account?
+        <a href="#" id="showRegisterLink">Create one</a>
+      </div>
+
     </div>
 
-    <!-- Error message box (hidden by default, shown on failed login) -->
-    <div class="err-box" id="err"></div>
 
-    <!-- ID / username field -->
-    <label class="login-label" id="idLbl">Student ID / Username</label>
-    <input class="login-input" id="uid" type="text" placeholder="2021-10456">
+    <!-- ============================================================
+         REGISTER PANEL
+         STEP 1: ACCOUNT DETAILS
+    ============================================================= -->
+    <div id="registerPanel" style="display:none;">
 
-    <!-- Password field -->
-    <label class="login-label">Password</label>
-    <input class="login-input" id="pwd" type="password" placeholder="••••••••">
+      <div class="err-box" id="regErr"></div>
 
-    <!-- Sign in button -->
-    <button class="btn-sign" onclick="login()">Sign In to Repository</button>
+      <label class="login-label">
+        Full Name
+      </label>
 
-    <!-- Forgot password note -->
-    <div class="login-foot">Forgot password? Contact your librarian.</div>
+      <input
+        class="login-input"
+        id="regFullname"
+        type="text"
+        placeholder="Juan Dela Cruz"
+      >
+
+
+      <label class="login-label">
+        Institutional Email
+      </label>
+
+      <input
+        class="login-input"
+        id="regEmail"
+        type="email"
+        placeholder="you@students.isatu.edu.ph or you@isatu.edu.ph"
+      >
+
+
+      <label class="login-label">
+        Department / College
+      </label>
+
+      <select
+        class="login-input"
+        id="regDept"
+      >
+        <option value="">
+          — Select your college —
+        </option>
+
+        <option>
+          College of Engineering and Architecture
+        </option>
+
+        <option>
+          College of Computing and Informatics
+        </option>
+
+        <option>
+          College of Arts and Sciences
+        </option>
+
+        <option>
+          College of Industrial Technology
+        </option>
+
+        <option>
+          College of Education
+        </option>
+      </select>
+
+
+      <label class="login-label">
+        Password
+      </label>
+
+      <input
+        class="login-input"
+        id="regPwd"
+        type="password"
+        placeholder="Min. 8 characters"
+      >
+
+
+      <label class="login-label">
+        Confirm Password
+      </label>
+
+      <input
+        class="login-input"
+        id="regPwd2"
+        type="password"
+        placeholder="Repeat password"
+      >
+
+
+      <!-- IMPORTANT:
+           No onclick here.
+           JavaScript will attach the click event. -->
+      <button
+        type="button"
+        class="btn-sign"
+        id="sendCodeBtn"
+      >
+        Send Verification Code
+      </button>
+
+
+      <div class="login-foot">
+
+        Already have an account?
+
+        <a href="#" id="showLoginLink">
+          Sign in
+        </a>
+
+      </div>
+
+    </div>
+
+
+    <!-- ============================================================
+         OTP PANEL
+         STEP 2: VERIFY EMAIL
+    ============================================================= -->
+    <div id="otpPanel" style="display:none;">
+
+      <div class="err-box" id="otpErr"></div>
+
+
+      <p
+        style="
+          font-size:0.84rem;
+          color:var(--muted, #666);
+          margin-bottom:14px;
+        "
+      >
+        We sent a 6-digit code to
+
+        <strong id="otpEmailDisplay"></strong>.
+
+        Enter it below.
+      </p>
+
+
+      <label class="login-label">
+        Verification Code
+      </label>
+
+
+      <input
+        class="login-input"
+        id="otpCode"
+        type="text"
+        maxlength="6"
+        inputmode="numeric"
+        autocomplete="one-time-code"
+        placeholder="123456"
+      >
+
+
+      <!-- IMPORTANT:
+           No onclick here.
+           JavaScript will attach the click event. -->
+      <button
+        type="button"
+        class="btn-sign"
+        id="verifyBtn"
+      >
+        Verify &amp; Create Account
+      </button>
+
+
+      <div class="login-foot">
+
+        <a href="#" id="resendCodeLink">
+          Resend code
+        </a>
+
+        &nbsp;·&nbsp;
+
+        <a href="#" id="editDetailsLink">
+          Edit details
+        </a>
+
+      </div>
+
+    </div>
 
   </div>
 
-  <!-- Toast notification container -->
-  <div class="toast-wrap" id="toasts"></div>
+
+  <!-- ============================================================
+       TOAST NOTIFICATIONS
+  ============================================================= -->
+  <div
+    class="toast-wrap"
+    id="toasts"
+  ></div>
+
+
+  <!-- ============================================================
+       JAVASCRIPT
+  ============================================================= -->
 
   <!-- Shared API layer -->
   <script src="js/api.js"></script>
-  <!-- Login page logic -->
+
+  <!-- Login / registration / OTP logic -->
   <script src="js/login.js"></script>
-<script src="js/motion.js"></script>
-<script>
-  initAmbientBackground(document.getElementById("ambientBg"), 500);
-</script>
+
+  <!-- Motion effects -->
+  <!-- <script src="js/motion.js"></script> -->
+
+
+  <!-- ============================================================
+       PAGE EVENT HANDLERS
+       
+       IMPORTANT:
+       We intentionally do NOT use inline onclick attributes.
+       This prevents duplicate calls and accidental form submission.
+  ============================================================= -->
+  <script>
+
+    document.addEventListener("DOMContentLoaded", () => {
+
+      console.log("INDEX.HTML LOADED");
+
+
+      /* ------------------------------------------------------------
+         LOGIN
+      ------------------------------------------------------------ */
+
+      const loginBtn =
+        document.getElementById("loginBtn");
+
+      if (loginBtn) {
+
+        loginBtn.addEventListener("click", (event) => {
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          console.log("LOGIN BUTTON CLICKED");
+
+          login();
+
+        });
+
+      }
+
+
+      /* ------------------------------------------------------------
+         SHOW REGISTER
+      ------------------------------------------------------------ */
+
+      const showRegisterLink =
+        document.getElementById("showRegisterLink");
+
+      if (showRegisterLink) {
+
+        showRegisterLink.addEventListener("click", (event) => {
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          console.log("SHOW REGISTER CLICKED");
+
+          showRegister();
+
+        });
+
+      }
+
+
+      /* ------------------------------------------------------------
+         SHOW LOGIN
+      ------------------------------------------------------------ */
+
+      const showLoginLink =
+        document.getElementById("showLoginLink");
+
+      if (showLoginLink) {
+
+        showLoginLink.addEventListener("click", (event) => {
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          console.log("SHOW LOGIN CLICKED");
+
+          showLogin();
+
+        });
+
+      }
+
+
+      /* ------------------------------------------------------------
+         SEND OTP
+      ------------------------------------------------------------ */
+
+      const sendCodeBtn =
+        document.getElementById("sendCodeBtn");
+
+      if (sendCodeBtn) {
+
+        sendCodeBtn.addEventListener("click", (event) => {
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          console.log("SEND OTP BUTTON CLICKED");
+
+          sendOtp();
+
+        });
+
+      }
+
+
+      /* ------------------------------------------------------------
+         VERIFY OTP
+      ------------------------------------------------------------ */
+
+      const verifyBtn =
+        document.getElementById("verifyBtn");
+
+      if (verifyBtn) {
+
+        verifyBtn.addEventListener("click", (event) => {
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          console.log("VERIFY OTP BUTTON CLICKED");
+
+          verifyAndRegister();
+
+        });
+
+      }
+
+
+      /* ------------------------------------------------------------
+         RESEND OTP
+      ------------------------------------------------------------ */
+
+      const resendCodeLink =
+        document.getElementById("resendCodeLink");
+
+      if (resendCodeLink) {
+
+        resendCodeLink.addEventListener("click", (event) => {
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          console.log("RESEND OTP CLICKED");
+
+          sendOtp();
+
+        });
+
+      }
+
+
+      /* ------------------------------------------------------------
+         EDIT REGISTRATION DETAILS
+      ------------------------------------------------------------ */
+
+      const editDetailsLink =
+        document.getElementById("editDetailsLink");
+
+      if (editDetailsLink) {
+
+        editDetailsLink.addEventListener("click", (event) => {
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          console.log("EDIT DETAILS CLICKED");
+
+          showRegister();
+
+        });
+
+      }
+
+
+      /* ------------------------------------------------------------
+         AMBIENT BACKGROUND
+      ------------------------------------------------------------ */
+
+      if (typeof initAmbientBackground === "function") {
+
+        initAmbientBackground(
+          document.getElementById("ambientBg"),
+          500
+        );
+
+      }
+
+    });
+
+  </script>
 
 </body>
 </html>

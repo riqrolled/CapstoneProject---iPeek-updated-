@@ -1,6 +1,66 @@
 # CapstoneProject---iPeek-updated-
 # Research Repository & AI Analysis System
 
+## Project Overview
+
+iPeek is a centralized ISAT-U research repository with authenticated browsing,
+PDF viewing, research submission workflows, OTP-protected account registration,
+and AI-assisted similarity, summary, gap, and chatbot features.
+
+The application has two parts:
+
+- `frontend/` contains the browser pages, styles, and JavaScript API client.
+- `backend/` contains the FastAPI service, SQLite database, ChromaDB vector
+        store, authentication, ingestion, and AI services.
+
+## Running Locally
+
+Start the API from the `backend/` directory:
+
+```powershell
+python -m uvicorn main:app --reload
+```
+
+Serve `frontend/` through a local web server on port `5500`, for example with
+the VS Code Live Server extension. The frontend API client expects the backend
+at `http://localhost:8000` and CORS is configured for `localhost:5500` and
+`127.0.0.1:5500`.
+
+The backend requires a `.env` file containing at least `GROQ_API_KEY`. OTP
+email delivery additionally requires `SMTP_USERNAME` and `SMTP_PASSWORD`.
+`LIBRARIAN_EMAILS` is a comma-separated allowlist of staff addresses that
+should receive the librarian role.
+
+Install backend dependencies with:
+
+```powershell
+pip install -r requirements.txt
+```
+
+## Authentication and Registration
+
+Authentication uses JWT bearer tokens. On successful login, the token is kept
+in `sessionStorage` under `ipeek_token` and attached by `frontend/js/api.js` to
+protected API requests. The backend remains authoritative for the user's role;
+display values in `sessionStorage` are not used for access control.
+
+New accounts use a two-step registration flow:
+
+1. The user submits their name, institutional email, department, and password.
+2. The backend generates a six-digit OTP, stores only its SHA-256 hash, and
+         emails the code.
+3. The frontend verifies the OTP and then submits the registration details.
+4. The backend creates the account only after that email is verified.
+
+Only `@students.isatu.edu.ph` and `@isatu.edu.ph` addresses are accepted.
+Student, faculty, and librarian roles are derived server-side from the email
+domain and librarian allowlist. OTPs expire after 10 minutes and are limited
+to five incorrect attempts; requesting a new code invalidates older pending
+codes.
+
+The OTP flow is coordinated by `frontend/js/login.js` and implemented by
+`backend/services/otp_service.py` and `backend/routers/auth_routes.py`.
+
 ## Changes Made Today
 
 ### Research Detail Page
@@ -50,7 +110,10 @@ await Promise.all([
 ]);
 ```
 
-This prevents the frontend from intentionally waiting for one analysis to finish before starting the next one.
+This prevents the frontend from intentionally waiting for one analysis to
+finish before starting the next one. The requests are still separate backend
+requests, so parallel browser calls do not yet eliminate duplicate retrieval
+and reranking work.
 
 ### Similarity Analysis
 
@@ -287,6 +350,26 @@ because the second approach would force the requests to run sequentially.
 
 With `Promise.all()`, all three requests can be in progress at the same time.
 
+The current RAG pipeline for each analysis is:
+
+```text
+embed query -> ChromaDB vector search -> CrossEncoder reranking -> Groq generation
+```
+
+The current configuration retrieves 10 candidates and keeps the top 5. The
+reranker is `BAAI/bge-reranker-v2-m3` through
+`sentence-transformers.CrossEncoder`, running CPU-bound inference in a worker
+thread. The embedding service uses FastEmbed, but the reranker has not yet
+been migrated to an ONNX implementation.
+
+Groq generation is configured with the `openai/gpt-oss-120b` model in
+`backend/config.py`.
+
+Because similarity, summary, and gap analysis each call the RAG service
+independently, opening a paper can repeat embedding, vector search, and
+reranking up to three times. `Promise.all()` overlaps those requests, but it
+does not remove the duplicate backend work.
+
 ---
 
 ## Possible Performance Improvements
@@ -303,7 +386,9 @@ The backend should send only the information that the model actually needs.
 
 Similarity analysis can become expensive if the backend sends a very large number of research papers to the model.
 
-A smaller candidate set can significantly reduce processing time.
+A smaller candidate set can significantly reduce processing time. This has
+already been applied: `RETRIEVAL_TOP_K` is `10` in `backend/config.py`, down
+from `20`, while the reranker keeps the top `5`.
 
 ### 3. Use a faster Groq model
 
@@ -323,7 +408,9 @@ in the database.
 
 When the user opens the same paper again, the backend can return the existing result instead of making another Groq request.
 
-This can significantly reduce both response time and API usage.
+This is already implemented in the `AIAnalysis` database table. Cached
+similarity, summary, and gap results are reused by `research_id`, survive
+server restarts, and are cleared when the underlying paper changes.
 
 ### 5. Avoid unnecessary repeated requests
 
@@ -352,6 +439,11 @@ Call Groq again
     ↓
 Generate the same result
 ```
+
+The database cache avoids repeated Groq generations on later visits. A future
+combined analysis endpoint could also avoid repeated retrieval and reranking
+on the first visit by retrieving once and sharing the context across the three
+generations. That change is not yet implemented.
 
 ### 6. Add backend timeouts
 
@@ -419,12 +511,35 @@ The Research Detail page now supports:
 - AI error handling
 - Loading states
 - CORS preflight handling
+- OTP email verification before account creation
+- Server-derived student, faculty, and librarian roles
+- JWT API adapter for authenticated frontend requests
 
-The main remaining performance consideration is reducing the time required for the backend/Groq AI requests.
+The main remaining performance considerations are measuring each pipeline stage,
+avoiding duplicate first-visit retrieval/reranking, and optionally migrating
+the CrossEncoder reranker from PyTorch to a supported ONNX implementation.
 
 ---
 
 ## Main Files Updated
+
+### Authentication and API
+
+The authentication work spans:
+
+- `frontend/index.html` and `frontend/js/login.js` for login, registration,
+        OTP entry, resend, and account-creation states.
+- `frontend/js/api.js` for login, JWT storage, protected requests, OTP
+        requests, OTP verification, and registration calls.
+- `backend/routers/auth_routes.py` for login, profile, OTP, and registration
+        endpoints.
+- `backend/services/otp_service.py` for code generation, hashing, expiry,
+        attempt limits, email delivery, and role derivation.
+- `backend/models.py`, `backend/schemas.py`, and `backend/config.py` for the
+        OTP table, request/response models, SMTP settings, and role configuration.
+
+`backend/routers/ai_routes.py` also permits faculty accounts to use the AI
+analysis and chatbot endpoints, alongside students and librarians.
 
 ### `detail.js`
 

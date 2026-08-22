@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, ForeignKey, Enum, Float,
+    Column, Integer, String, Text, DateTime, ForeignKey, Enum, Float, Boolean,
 )
 from sqlalchemy.orm import relationship
 
@@ -11,6 +11,7 @@ from database import Base
 
 class RoleEnum(str, enum.Enum):
     student = "student"
+    faculty = "faculty"
     librarian = "librarian"
 
 
@@ -19,6 +20,16 @@ class StatusEnum(str, enum.Enum):
     approved = "approved"
     returned = "returned"
 
+class OTPVerification(Base):
+    __tablename__ = "otp_verifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(120), nullable=False, index=True)
+    code_hash = Column(String(64), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    verified = Column(Boolean, default=False, nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 class User(Base):
     __tablename__ = "users"

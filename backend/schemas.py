@@ -1,20 +1,34 @@
 from datetime import datetime
 from typing import Optional, List
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 from models import RoleEnum, StatusEnum
 
 
+# ---------- Shared email normalization ----------
+# Any schema needing an "email" field inherits from this instead of
+# BaseModel directly. Lowercases + strips whitespace so
+# "SomeOne@isatu.edu.ph" and "someone@isatu.edu.ph" are always treated
+# as the same address — before they ever reach a route or the DB.
+
+class _EmailNormalizedBase(BaseModel):
+    email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def _normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
 # ---------- Users / Auth ----------
 
-class UserCreate(BaseModel):
-    username: str
-    email: EmailStr
+class UserCreate(_EmailNormalizedBase):
     password: str
     fullname: str
-    role: RoleEnum
     department: Optional[str] = None
+    # No username field — the institutional email becomes the username
+    # server-side. No role field — derived from the email domain.
 
 
 class UserOut(BaseModel):
@@ -46,6 +60,16 @@ class Token(BaseModel):
     token_type: str = "bearer"
     role: RoleEnum
     fullname: str
+
+
+# ---------- OTP registration ----------
+
+class OTPRequest(_EmailNormalizedBase):
+    pass
+
+
+class OTPVerify(_EmailNormalizedBase):
+    code: str
 
 
 # ---------- Research ----------
