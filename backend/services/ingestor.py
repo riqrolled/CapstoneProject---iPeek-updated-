@@ -227,7 +227,7 @@ Document (first 3000 characters):
             staged_path.unlink(missing_ok=True)
             raise ValueError(f"A paper named '{filename}' was submitted by someone else in the meantime.")
 
-        pending_path = PENDING_DIR / filename
+        pending_path = PENDING_DIR / f"{stem}.pdf"
 
         if is_resubmission and existing:
             if pending_path.exists():
@@ -276,7 +276,12 @@ Document (first 3000 characters):
                     }
                 ))
 
-        await vectorstore_service.add_documents(documents)
+        indexed = True
+        try:
+            await vectorstore_service.add_documents(documents)
+        except Exception as e:
+            indexed = False
+            logger.exception("Vector indexing failed for '%s'; saving submission as pending", stem)
 
         if is_resubmission and existing:
             existing.title = meta.get("title", stem)
@@ -298,10 +303,12 @@ Document (first 3000 characters):
         sidecar_path.unlink(missing_ok=True)
 
         action_word = "resubmitted" if is_resubmission else "submitted"
+        indexed_chunks = len(documents) if indexed else 0
         return {
             "success": True,
-            "message": f"'{meta['title']}' {action_word} — {len(documents)} chunks indexed across {len(pages)} pages.",
-            "metadata": meta, "chunks": len(documents), "source": stem, "resubmission": is_resubmission,
+            "message": f"'{meta['title']}' {action_word} — {indexed_chunks} chunks indexed across {len(pages)} pages.",
+            "metadata": meta, "chunks": indexed_chunks,
+            "source": stem, "resubmission": is_resubmission,
         }
 
 

@@ -34,7 +34,7 @@ initPage();
 
 async function loadSubmissions() {
   try {
-    const data  = await apiSubmissions();
+    const data  = await apiPendingSubmissions();
     submissions = data.submissions || [];
     renderList();
   } catch (e) {

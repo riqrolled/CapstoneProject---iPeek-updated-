@@ -359,6 +359,13 @@ async function apiSubmissions() {
   return { submissions: d.map(_mapResearch) };
 }
 
+async function apiPendingSubmissions() {
+  const r = await fetch(`${API_BASE}/admin/repository/pending`, { headers: _authHeaders() });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.detail || "Failed to fetch pending submissions.");
+  return { submissions: d.map(_mapResearch) };
+}
+
 async function apiMySubmissions() {
   const r = await fetch(`${API_BASE}/repository/my-uploads`, { headers: _authHeaders() });
   const d = await r.json();
