@@ -15,16 +15,27 @@ The application has two parts:
 
 ## Running Locally
 
-Start the API from the `backend/` directory:
+Start the API manually from the project root using the project virtual environment:
 
 ```powershell
-python -m uvicorn main:app --reload
+venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+Alternatively, from the `backend/` directory:
+
+```powershell
+..\venv\Scripts\python.exe -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+These commands invoke the virtual-environment Python executable directly;
+changing PowerShell's execution policy is not required.
+
 Serve `frontend/` through a local web server on port `5500`, for example with
-the VS Code Live Server extension. The frontend API client expects the backend
-at `http://localhost:8000` and CORS is configured for `localhost:5500` and
-`127.0.0.1:5500`.
+the VS Code Live Server extension. Workspace settings configure Live Server to
+use `frontend/` as its root, so backend staging files do not reload the upload
+page during submission. Open the frontend at `http://127.0.0.1:5500/`.
+The frontend API client expects the backend at `http://localhost:8000` and CORS
+is configured for `localhost:5500` and `127.0.0.1:5500`.
 
 The backend requires a `.env` file containing at least `GROQ_API_KEY`. OTP
 email delivery additionally requires `SMTP_USERNAME` and `SMTP_PASSWORD`.

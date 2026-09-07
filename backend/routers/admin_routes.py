@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -79,7 +80,7 @@ async def validate_research(
         ))
 
     if payload.approve:
-        src = PENDING_DIR / f"{research.source_stem}.pdf"
+        src = Path(research.filepath)
         dest = PUBLIC_DIR / f"{research.source_stem}.pdf"
         if src.exists():
             import shutil

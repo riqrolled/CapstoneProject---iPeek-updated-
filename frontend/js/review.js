@@ -5,6 +5,12 @@
  * Approve/return now go through ONE backend call (apiValidateResearch)
  * instead of two — the new backend's /validate route does both at once.
  * Delete now uses numeric research id, not source_stem.
+ *
+ * ADDED: "View PDF" action in the detail panel — lets the librarian
+ * open the actual submitted document to verify it before approving or
+ * returning it, using the now-fixed GET /repository/{source_stem}/pdf
+ * route (previously approved-only, now also allowed for librarians on
+ * pending/returned research).
  */
 
 let currentFilter = "all";
@@ -237,6 +243,21 @@ function selectSubmission(id) {
 
   const actionRow = document.createElement("div");
   actionRow.className = "action-row";
+
+  // View PDF — verify the actual submitted document before deciding.
+  // Works regardless of status (pending/returned/approved) now that
+  // the backend allows librarians to view any status's PDF.
+  const viewPdfBtn = document.createElement("button");
+  viewPdfBtn.className   = "btn btn-ghost";
+  viewPdfBtn.textContent = "📄 View PDF";
+  viewPdfBtn.addEventListener("click", () => {
+    if (!s.source_stem) {
+      toast("No document available for this submission.", "error");
+      return;
+    }
+    viewPdfInNewTab(apiPdfUrl(s.source_stem));
+  });
+  actionRow.appendChild(viewPdfBtn);
 
   if (currentUserRole === "librarian") {
     const deleteBtn = document.createElement("button");

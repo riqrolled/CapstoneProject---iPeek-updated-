@@ -1,23 +1,6 @@
 /**
  * login.js
  * --------
- * Handles the login page:
- *  - Role tab switching (Student / Librarian) — pre-fills the expected
- *    username for the demo accounts, but does NOT itself grant access;
- *    the actual check happens server-side via apiLogin()
- *  - Calls POST /api/auth/login (real check against the users table)
- *  - On success, Flask sets a session cookie — that cookie, not
- *    sessionStorage, is what protected routes (approve/review) check
- *  - sessionStorage is still set too, but ONLY for display purposes
- *    (showing the name/role in the navbar) — it has no security value
- *    and is never trusted by the backend
- *
-
- */
-
-/**
- * login.js
- * --------
  * Handles the login page: sign in, and the two-step registration flow
  * (details -> OTP verification -> account created).
  *
