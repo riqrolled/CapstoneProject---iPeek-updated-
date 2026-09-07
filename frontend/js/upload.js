@@ -7,11 +7,17 @@
  * mid-request doesn't cleanly cancel anything server-side (the backend
  * keeps running via asyncio.to_thread), it just kills the browser's
  * ability to see the result — so we warn before letting that happen.
+ *
+ * ADDED: viewUploadedPdf() — opens the staged (not-yet-confirmed) PDF
+ * in a new tab so the uploader can visually verify it's the correct
+ * file, not just check the AI-extracted metadata text. Uses the new
+ * GET /repository/upload/preview/{preview_id}/pdf backend route.
  */
 
 let selectedFile = null;
 let currentPreviewId = null;
 let uploadInProgress = false;
+let selectedFileBlobUrl = null;
 
 
 /* ── Navigation guard ───────────────────────────────────────────────── */
@@ -101,6 +107,9 @@ function setFile(file) {
 
   selectedFile = file;
 
+  if (selectedFileBlobUrl) URL.revokeObjectURL(selectedFileBlobUrl);
+  selectedFileBlobUrl = URL.createObjectURL(file);
+
   document.getElementById("fileName").textContent = file.name;
 
   document.getElementById("fileSize").textContent =
@@ -111,9 +120,24 @@ function setFile(file) {
   document.getElementById("dropZone").style.display = "none";
 }
 
+/** Opens the locally-selected file (before any upload) so the user can
+ * check it's the right PDF prior to submitting. No network call needed
+ * — it's just the browser's own copy of the file. */
+function viewSelectedFile() {
+  if (!selectedFileBlobUrl) {
+    toast("No file selected.", "error");
+    return;
+  }
+  window.open(selectedFileBlobUrl, "_blank");
+}
 
 function clearFile() {
   selectedFile = null;
+
+  if (selectedFileBlobUrl) {
+    URL.revokeObjectURL(selectedFileBlobUrl);
+    selectedFileBlobUrl = null;
+  }
 
   document.getElementById("fileInfo").style.display = "none";
 
@@ -213,6 +237,21 @@ function showMetaModal(meta) {
   document.getElementById("metaModal").style.display = "flex";
 }
 
+/**
+ * Opens the file the student just uploaded (still staged, not yet
+ * confirmed) so they can visually verify it's the correct PDF before
+ * submitting - separate from checking the AI-extracted metadata text.
+ * Wire this to a button inside the #metaModal markup, e.g.:
+ *   <button class="btn btn-ghost" onclick="viewUploadedPdf()">📄 View Uploaded PDF</button>
+ */
+function viewUploadedPdf() {
+  if (!currentPreviewId) {
+    toast("No file to preview.", "error");
+    return;
+  }
+  viewPdfInNewTab(apiPreviewPdfUrl(currentPreviewId));
+}
+
 
 function cancelMetaConfirm() {
   document.getElementById("metaModal").style.display = "none";
@@ -262,13 +301,6 @@ async function confirmMetaAndSubmit() {
       "font-size:0.84rem;color:var(--success);" +
       "background:#f0fdf4;border:1px solid #86efac;";
 
-    /*
-     * Keep the owner's newer implementation here.
-     *
-     * The previous/stashed version used finalValues.title,
-     * but finalValues no longer exists in this single-step
-     * upload workflow.
-     */
     status.textContent =
       `✅ "${result.metadata?.title || selectedFile.name}" submitted — ` +
       `${result.chunks} chunks indexed. Pending librarian review.`;

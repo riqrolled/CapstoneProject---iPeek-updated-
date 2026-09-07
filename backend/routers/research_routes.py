@@ -1,31 +1,72 @@
 from typing import List, Optional
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import MAX_UPLOAD_SIZE
+from config import MAX_UPLOAD_SIZE, PUBLIC_DIR, STAGING_DIR
 from database import get_db
 from dependencies import require_role
 from models import Feedback, Research, StatusEnum, User
 from schemas import FeedbackOut, ResearchOut, UploadConfirmIn, UploadPreviewOut
 from services.ingestor import ingestor
 from fastapi.responses import FileResponse
-from config import PUBLIC_DIR
+
 router = APIRouter(prefix="/repository", tags=["Repository"])
+
+
+@router.get("/upload/preview/{preview_id}/pdf")
+async def get_preview_pdf(
+    preview_id: str,
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
+):
+    """
+    Serves the STAGED file for a not-yet-confirmed upload, so the
+    uploader can open/verify the actual PDF (not just the AI-extracted
+    metadata) before confirming. preview_id is a random UUID, and the
+    staged file is deleted automatically once confirmed or after it
+    expires (PREVIEW_MAX_AGE_SECONDS) - there is no Research row yet
+    at this point, so this can't be gated by ownership the way the
+    real /{source_stem}/pdf route is.
+    """
+    path = STAGING_DIR / f"{preview_id}.pdf"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Preview file not found or has expired.")
+    return FileResponse(str(path), media_type="application/pdf")
+
 
 @router.get("/{source_stem}/pdf")
 async def get_pdf(
     source_stem: str,
-    current_user: User = Depends(require_role("student", "librarian")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Research).where(Research.source_stem == source_stem))
     research = result.scalar_one_or_none()
-    if not research or research.status != StatusEnum.approved:
+    if not research:
         raise HTTPException(status_code=404, detail="Document not available for viewing.")
 
-    path = PUBLIC_DIR / f"{source_stem}.pdf"
+    is_owner = research.student_id == current_user.id
+    is_librarian = current_user.role.value == "librarian"
+    is_approved = research.status == StatusEnum.approved
+
+    # Approved research is public to any logged-in user. Anything else
+    # (pending/returned) is only viewable by whoever uploaded it or by
+    # a librarian - which is specifically what makes review possible:
+    # a librarian could never previously open a pending submission's
+    # PDF to check it before approving.
+    if not (is_approved or is_owner or is_librarian):
+        raise HTTPException(status_code=403, detail="You do not have permission to view this document.")
+
+    if is_approved:
+        path = PUBLIC_DIR / f"{source_stem}.pdf"
+    else:
+        # Approval only COPIES the file to PUBLIC_DIR; the original
+        # always still exists at research.filepath (PENDING_DIR),
+        # regardless of status, so this works for pending and returned.
+        path = Path(research.filepath)
+
     if not path.exists():
         raise HTTPException(status_code=404, detail="Document not available for viewing.")
     return FileResponse(str(path), media_type="application/pdf")
@@ -38,7 +79,7 @@ async def upload_preview(
     year: str = Form(""),
     members: str = Form(""),
     abstract: str = Form(""),
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -53,7 +94,7 @@ async def upload_preview(
 @router.post("/upload/confirm")
 async def upload_confirm(
     payload: UploadConfirmIn,
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -64,7 +105,7 @@ async def upload_confirm(
 
 @router.get("/browse", response_model=List[ResearchOut])
 async def browse_repository(
-    current_user: User = Depends(require_role("student", "librarian", "admin")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Research).where(Research.status == StatusEnum.approved))
@@ -74,7 +115,7 @@ async def browse_repository(
 @router.get("/search", response_model=List[ResearchOut])
 async def search_research(
     q: Optional[str] = None,
-    current_user: User = Depends(require_role("student", "librarian")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Research).where(Research.status == StatusEnum.approved)
@@ -87,7 +128,7 @@ async def search_research(
 @router.get("/{source_stem}/detail", response_model=ResearchOut)
 async def get_research_detail(
     source_stem: str,
-    current_user: User = Depends(require_role("student", "librarian")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Research).where(Research.source_stem == source_stem))
@@ -99,7 +140,7 @@ async def get_research_detail(
 
 @router.get("/my-uploads", response_model=List[ResearchOut])
 async def my_uploads(
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Research).where(Research.student_id == current_user.id))
@@ -109,7 +150,7 @@ async def my_uploads(
 @router.get("/{research_id}/feedback", response_model=List[FeedbackOut])
 async def check_feedback(
     research_id: int,
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(

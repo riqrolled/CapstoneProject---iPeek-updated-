@@ -1,26 +1,6 @@
 /**
  * api.js
  * ------
- * ADAPTER LAYER for the new FastAPI/JWT backend.
- *
- * Every exported function keeps the EXACT same name and return shape as
- * the old Flask session-cookie backend. Internally, each one translates
- * to the new endpoint paths, attaches a JWT bearer token instead of a
- * session cookie, and maps new field names (fullname, authors, year int,
- * etc.) back onto the old field names every page script already expects
- * (full_name, lead_researcher, school_year string, etc.).
- *
- * This means browse.js, upload.js, my-submissions.js, profile.js, and
- * login.js need ZERO changes — they only ever talk to api.js's stable
- * interface, never the raw backend directly.
- *
- * TOKEN STORAGE: JWT stored in sessionStorage under "ipeek_token".
- * Cleared on logout via sessionStorage.clear() (already done in every
- * page's inline logout() script).
- */
-/**
- * api.js
- * ------
  * ADAPTER LAYER for the FastAPI/JWT backend.
  *
  * Every exported function keeps a stable name/shape so page scripts
@@ -54,6 +34,7 @@ const NAV_LINKS = {
     { href: "review.html",    label: "Review Queue",  id: "review"    },
     { href: "browse.html",    label: "Browse",        id: "browse"    },
     { href: "upload.html",    label: "Upload",        id: "upload"    },
+    { href: "my-submissions.html", label: "My Submissions", id: "my-submissions" },
   ],
 };
 
@@ -332,6 +313,30 @@ function apiPdfUrl(source) {
   return `${API_BASE}/repository/${encodeURIComponent(source)}/pdf`;
 }
 
+function apiPreviewPdfUrl(previewId) {
+  return `${API_BASE}/repository/upload/preview/${encodeURIComponent(previewId)}/pdf`;
+}
+
+/**
+ * Opens a protected PDF in a new tab. A plain <a href> can't carry the
+ * JWT Authorization header, so this fetches the file as a blob with
+ * the header attached, then opens that blob locally.
+ */
+async function viewPdfInNewTab(url) {
+  try {
+    const r = await fetch(url, { headers: _authHeaders() });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.detail || "Could not load PDF.");
+    }
+    const blob = await r.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, "_blank");
+  } catch (e) {
+    toast(`Could not open PDF: ${e.message}`, "error");
+  }
+}
+
 async function apiValidateResearch(researchId, action, comments) {
   const r = await fetch(`${API_BASE}/admin/repository/${researchId}/validate`, {
     method: "POST",
@@ -356,13 +361,6 @@ async function apiSubmissions() {
   const r = await fetch(`${API_BASE}/admin/repository`, { headers: _authHeaders() });
   const d = await r.json();
   if (!r.ok) throw new Error(d.detail || "Failed to fetch submissions.");
-  return { submissions: d.map(_mapResearch) };
-}
-
-async function apiPendingSubmissions() {
-  const r = await fetch(`${API_BASE}/admin/repository/pending`, { headers: _authHeaders() });
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.detail || "Failed to fetch pending submissions.");
   return { submissions: d.map(_mapResearch) };
 }
 
