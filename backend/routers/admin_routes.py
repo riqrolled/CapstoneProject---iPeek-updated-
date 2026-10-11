@@ -1,4 +1,4 @@
-from pathlib import Path
+import asyncio
 from typing import List
 import secrets
 
@@ -7,14 +7,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import hash_password
-from config import PENDING_DIR, PUBLIC_DIR
 from database import get_db
 from dependencies import require_role
-from models import DeletionLog, Feedback, Research, RoleEnum, StatusEnum, User
+from models import DeletionLog, Feedback, Research, ResearchVersion, RoleEnum, StatusEnum, User
 from schemas import (
     AdminUserCreate, AdminUserOut, DashboardStats, ResearchOut, UserOut, ValidateResearch,
 )
 from services.otp_service import determine_role_from_email
+from services.storage import storage_service
 from services.vectorstore import vectorstore_service
 
 router = APIRouter(prefix="/admin", tags=["Admin (Librarian only)"])
@@ -73,9 +73,52 @@ async def validate_research(
     if not research:
         raise HTTPException(status_code=404, detail="Research not found")
 
-    research.status = StatusEnum.approved if payload.approve else StatusEnum.returned
-    research.reviewed_by = current_user.id
+    if payload.approve:
+        # Approval MOVES the PDF from pending/ to public/ in the bucket,
+        # updating research.filepath in the same transaction. Order matters:
+        # copy first, commit DB, then remove pending — so a failure never
+        # loses the file.
+        pending_key = research.filepath  # pending/{stem}.pdf
+        public_key = storage_service.public_key(research.source_stem)
 
+        # Step 1: copy pending → public (raise if it fails; paper stays pending)
+        try:
+            await asyncio.to_thread(storage_service.copy, pending_key, public_key)
+        except Exception as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Approval failed — could not move PDF to public storage: {e}",
+            )
+
+        # Step 2: update filepath + status and commit
+        research.filepath = public_key
+        research.status = StatusEnum.approved
+        research.reviewed_by = current_user.id
+        if payload.feedback_message:
+            research.feedback_note = payload.feedback_message
+            db.add(Feedback(
+                research_id=research.id,
+                librarian_id=current_user.id,
+                message=payload.feedback_message,
+            ))
+        await db.commit()
+        await db.refresh(research)
+
+        # Step 3: remove pending object — failure here is logged but non-fatal
+        # (the file is safely in public/ now; orphan cleanup is the fix script's job)
+        try:
+            await asyncio.to_thread(storage_service.remove, pending_key)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Approved research {research.id} but failed to remove pending object "
+                f"'{pending_key}': {e}. Orphan will be cleaned by fix_approved_filepaths.py."
+            )
+        return research
+
+    # Not approving — returned / rejected
+    research.status = StatusEnum.returned
+    research.reviewed_by = current_user.id
     if payload.feedback_message:
         research.feedback_note = payload.feedback_message
         db.add(Feedback(
@@ -83,14 +126,6 @@ async def validate_research(
             librarian_id=current_user.id,
             message=payload.feedback_message,
         ))
-
-    if payload.approve:
-        src = Path(research.filepath)
-        dest = PUBLIC_DIR / f"{research.source_stem}.pdf"
-        if src.exists():
-            import shutil
-            shutil.copy(str(src), str(dest))
-
     await db.commit()
     await db.refresh(research)
     return research
@@ -117,9 +152,18 @@ async def remove_research(
     await rag_service.clear_cache_for(research.id, db)   # or research_id inside the bulk loop
     await vectorstore_service.delete_by_source(research.source_stem)
 
-    for folder in (PENDING_DIR, PUBLIC_DIR):
-        path = folder / f"{research.source_stem}.pdf"
-        path.unlink(missing_ok=True)
+    # Remove every bucket object tied to this paper: current filepath,
+    # public/ copy if different, and all version archives — no orphans.
+    keys_to_remove = {research.filepath}
+    public_key = storage_service.public_key(research.source_stem)
+    keys_to_remove.add(public_key)
+    version_result = await db.execute(
+        select(ResearchVersion).where(ResearchVersion.research_id == research.id)
+    )
+    for v in version_result.scalars().all():
+        keys_to_remove.add(v.filepath)
+    for key in keys_to_remove:
+        await asyncio.to_thread(storage_service.remove, key)
 
     await db.delete(research)
     await db.commit()
@@ -149,8 +193,14 @@ async def bulk_delete_research(
         from services.rag import rag_service
         await rag_service.clear_cache_for(research.id, db)   # or research_id inside the bulk loop
         await vectorstore_service.delete_by_source(research.source_stem)
-        for folder in (PENDING_DIR, PUBLIC_DIR):
-            (folder / f"{research.source_stem}.pdf").unlink(missing_ok=True)
+        keys_to_remove = {research.filepath, storage_service.public_key(research.source_stem)}
+        version_result = await db.execute(
+            select(ResearchVersion).where(ResearchVersion.research_id == research.id)
+        )
+        for v in version_result.scalars().all():
+            keys_to_remove.add(v.filepath)
+        for key in keys_to_remove:
+            await asyncio.to_thread(storage_service.remove, key)
         await db.delete(research)
         deleted.append(rid)
 
