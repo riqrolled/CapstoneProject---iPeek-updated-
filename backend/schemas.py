@@ -100,6 +100,7 @@ class ResearchOut(BaseModel):
     source_stem: str
     status: StatusEnum
     feedback_note: Optional[str] = None
+    public_pdf_consent: bool = False
     student_id: int
     created_at: datetime
 
@@ -125,6 +126,9 @@ class UploadPreviewOut(BaseModel):
 class UploadConfirmIn(BaseModel):
     preview_id: str
     final_values: dict
+    # Required, no default — the API must reject a confirm that omits the
+    # author's explicit public-PDF choice (422 from FastAPI).
+    public_pdf_consent: bool
 
 
 # ---------- Feedback ----------

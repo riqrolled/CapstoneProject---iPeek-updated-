@@ -71,6 +71,10 @@ class Research(Base):
     abstract = Column(Text, nullable=True)
     feedback_note = Column(Text, nullable=True)
     status = Column(Enum(StatusEnum), default=StatusEnum.pending, nullable=False)
+    # Author's submission-time choice for REMOTE visibility of the full PDF.
+    # No server-side default: always set explicitly by confirm_upload.
+    # Does NOT affect Library Kiosk (in-person) viewing.
+    public_pdf_consent = Column(Boolean, nullable=False)
 
     student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)

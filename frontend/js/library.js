@@ -9,8 +9,11 @@
  *    clicking a card opens the full PDF in the on-page viewer (viewer
  *    logic relocated here from detail.js — Part 3 moved remote full-PDF
  *    access to this page only).
- *  - Lock control (librarian): locks THIS session to this page only
- *    (session-scoped via JWT sid — never touches any other session).
+ *  - Lock control is dashboard-only (Library Terminal Sessions card) —
+ *    no lock/unlock button is rendered here, so a student at this
+ *    terminal cannot touch the session lock.
+ *  - On pagehide (tab closed / navigating away) the session row is
+ *    removed from the dashboard tracker via POST /kiosk/deactivate.
  *
  * All DOM writes use textContent/createElement — XSS safe (matches
  * browse.js / detail.js / review.js).
@@ -19,8 +22,6 @@
 /* ── State ───────────────────────────────────────────────────────────────── */
 let allDocs = [];
 let filters = { search: "" };
-let currentRole   = null;
-let currentLocked = false;
 let currentSource = null;
 
 /* PDF viewer state — relocated from detail.js */
@@ -47,7 +48,6 @@ async function initPage() {
     return;
   }
 
-  currentRole = me.role;
   applyNav(me.role);   // async kiosk guard runs inside (redirects if locked elsewhere)
 
   const avatarEl = document.getElementById("avatarEl");
@@ -61,7 +61,6 @@ async function initPage() {
      backend's full-PDF gate admits requests from it. */
   try { await apiKioskActivate(); } catch { /* lock features need a re-login if no sid */ }
 
-  await refreshLockControl();
   await loadDocuments();
 }
 
@@ -164,46 +163,22 @@ if (searchInput) {
   });
 }
 
-/* ── Lock control (session-scoped — own sid only) ────────────────────────── */
+/* ── Session cleanup — keep the dashboard tracker in sync ──────────────────
+ * The lock/unlock control lives ONLY on the dashboard (Library Terminal
+ * Sessions). Here we just make sure that when this terminal page goes
+ * away (tab closed, reload, or navigating to another page), its session
+ * row is removed from the tracker. Best-effort: keepalive lets the
+ * request finish during unload; the dashboard's Terminate button is the
+ * reliable fallback if this never lands. */
 
-async function refreshLockControl() {
-  const btn = document.getElementById("kioskLockBtn");
-  if (!btn) return;
-  try {
-    currentLocked = !!(await apiKioskStatus()).locked;
-  } catch {
-    currentLocked = false;
-  }
-  if (currentRole === "librarian") {
-    btn.style.display = "inline-block";
-    btn.textContent   = currentLocked ? "Unlock Session" : "Lock to This Page";
-  } else {
-    btn.style.display = "none";
-  }
-}
+window.addEventListener("pagehide", () => {
+  apiKioskDeactivate().catch(() => { /* page is dying — Terminate button covers it */ });
+});
 
-async function toggleKioskLock() {
-  const btn = document.getElementById("kioskLockBtn");
-  if (btn) btn.disabled = true;
-  try {
-    await apiKioskSetLock(!currentLocked);
-    currentLocked = !currentLocked;
-    toast(currentLocked
-      ? "Session locked — restricted to this page until unlocked."
-      : "Session unlocked.", "success");
-    applyNav(currentRole);        // re-render nav: hidden when locked, restored when unlocked
-    await refreshLockControl();
-  } catch (e) {
-    toast(`Lock failed: ${e.message}`, "error");
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-/* Remote lock/unlock from the dashboard — nav is re-rendered by the
-   guard's poll; this only syncs the lock button. */
-window.addEventListener("kiosk-lock-change", () => {
-  refreshLockControl();
+/* Restored from the back/forward cache (pagehide above already fired):
+   re-register so full-PDF kiosk access and the tracker row come back. */
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted) apiKioskActivate().catch(() => {});
 });
 
 /* ── PDF viewer — relocated from detail.js ───────────────────────────────── */

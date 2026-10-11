@@ -55,10 +55,16 @@ async def get_pdf(
     # Privacy rule: full PDFs of APPROVED research are only served to
     #  - Library Viewing Station sessions (kiosk-activated sid),
     #  - librarians (review workflow needs every status),
-    #  - the uploader (their own paper, any status — My Submissions page).
-    # Remote viewers of other people's approved papers get an IMRaD
-    # summary on the detail page instead (POST /ai/{id}/imrad).
-    if not (is_owner or is_librarian or (is_approved and await is_kiosk_session(sid, db))):
+    #  - the uploader (their own paper, any status — My Submissions page),
+    #  - remote viewers, but ONLY if the author gave submission-time
+    #    consent (public_pdf_consent == True).
+    # Remote viewers without consent get the IMRaD summary on the detail
+    # page instead (POST /ai/{id}/imrad). The kiosk path is unaffected by
+    # consent — in-person supervised viewing always sees the full PDF.
+    remote_ok = is_approved and (
+        research.public_pdf_consent or await is_kiosk_session(sid, db)
+    )
+    if not (is_owner or is_librarian or remote_ok):
         raise HTTPException(
             status_code=403,
             detail="Full document viewing is only available at the Library Viewing Station.",
@@ -103,7 +109,10 @@ async def upload_confirm(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await ingestor.confirm_upload(payload.preview_id, payload.final_values, current_user.id, db)
+        return await ingestor.confirm_upload(
+            payload.preview_id, payload.final_values, payload.public_pdf_consent,
+            current_user.id, db,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

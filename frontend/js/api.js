@@ -32,7 +32,7 @@ const NAV_LINKS = {
   librarian: [
     { href: "dashboard.html", label: "Dashboard",     id: "dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
     { href: "review.html",    label: "Review Queue",  id: "review",    icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
-    { href: "library.html",   label: "Library Terminal", id: "library", target: "_blank", icon: "M2 4h6a4 4 0 014 4v12a3 3 0 00-3-3H2zM22 4h-6a4 4 0 00-4 4v12a3 3 0 013-3h7z" },
+    { href: "library.html",   label: "Library Terminal", id: "library", icon: "M2 4h6a4 4 0 014 4v12a3 3 0 00-3-3H2zM22 4h-6a4 4 0 00-4 4v12a3 3 0 013-3h7z" },
     { href: "browse.html",    label: "Browse",        id: "browse",    icon: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" },
     { href: "upload.html",    label: "Upload",        id: "upload",    icon: "M12 4v16m8-8H4" },
     { href: "my-submissions.html", label: "My Submissions", id: "my-submissions", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
@@ -356,6 +356,30 @@ async function apiKioskSetLockFor(sid, locked) {
   return d;
 }
 
+/* Removes the CALLER's own session row — fired from library.html on
+   pagehide so a closed terminal drops out of the dashboard tracker.
+   keepalive lets the request survive the page unload. */
+async function apiKioskDeactivate() {
+  const r = await fetch(`${API_BASE}/kiosk/deactivate`, {
+    method: "POST", headers: _authHeaders(), keepalive: true,
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.detail || "Could not close the terminal session.");
+  return d;
+}
+
+/* Librarian-only: deletes a session row from the tracker (terminate
+   button on the dashboard's Library Terminal Sessions card). */
+async function apiKioskTerminate(sid) {
+  const r = await fetch(
+    `${API_BASE}/kiosk/sessions/${encodeURIComponent(sid)}`,
+    { method: "DELETE", headers: _authHeaders() }
+  );
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.detail || "Could not terminate the terminal session.");
+  return d;
+}
+
 /* ── Auth ────────────────────────────────────────────────────────────── */
 
 async function apiLogin(username, password) {
@@ -479,11 +503,15 @@ async function apiIngestPreview(file, formData) {
   return d;
 }
 
-async function apiIngestConfirm(previewId, finalValues) {
+async function apiIngestConfirm(previewId, finalValues, publicPdfConsent) {
   const r = await fetch(`${API_BASE}/repository/upload/confirm`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ..._authHeaders() },
-    body: JSON.stringify({ preview_id: previewId, final_values: finalValues }),
+    body: JSON.stringify({
+      preview_id: previewId,
+      final_values: finalValues,
+      public_pdf_consent: !!publicPdfConsent,
+    }),
   });
   const d = await r.json();
   if (!r.ok) throw new Error(d.detail || "Submission failed.");
@@ -568,6 +596,7 @@ function _mapResearch(item) {
     source_stem:      item.source_stem,
     status:           item.status,
     feedback:         item.feedback_note,
+    public_pdf_consent: !!item.public_pdf_consent,
     submitted_at:     item.created_at,
   };
 }

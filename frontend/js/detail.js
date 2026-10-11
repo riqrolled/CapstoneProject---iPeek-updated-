@@ -2,9 +2,16 @@
  * detail.js
  * ---------
  * Research Detail page: loads one paper, runs AI similarity/summary/gaps/
- * IMRaD analysis. Full-PDF viewing was removed from this page (remote
- * privacy) — the PDF viewer logic now lives in library.js (Library
- * Viewing Station); this page shows the IMRaD summary instead.
+ * IMRaD analysis. Full-PDF viewing on this page is gated by the author's
+ * submission-time public_pdf_consent:
+ *   - consent == true  → "Read Full Version" button (#pdfViewerTrigger,
+ *     restored from the pre-kiosk layout) opens the PDF in a new tab;
+ *     the IMRaD card is hidden entirely.
+ *   - consent == false → no PDF affordance; the IMRaD summary card
+ *     (#imradViewerCard) sits in the slot where the full-document viewer
+ *     used to render, and the AI Analysis tabs are summary-only
+ *     (Similarity / AI Summary / Research Gap — no IMRaD tab).
+ * The Library Viewing Station (library.js) is unaffected by consent.
  *
  * FIX NOTES (added — these were missing and caused the page to show
  * only the static shell with every panel stuck on "Loading..."):
@@ -61,6 +68,9 @@ async function initPage() {
 
   await navPromise;
 
+  /* Consent branch: full-PDF button vs IMRaD-only card. */
+  const permitFullPdf = applyConsentLayout(paperData);
+
   ["simBars", "summaryBox", "gapsBox", "imradBox"].forEach(id => {
     const el = document.getElementById(id);
     if (el && typeof bookLoaderHTML === "function") {
@@ -68,12 +78,10 @@ async function initPage() {
     }
   });
 
-  await Promise.all([
-    runSimilarity(),
-    runSummary(),
-    runGaps(),
-    runImrad(),
-  ]);
+  const analysisJobs = [runSimilarity(), runSummary(), runGaps()];
+  if (!permitFullPdf) analysisJobs.push(runImrad());
+
+  await Promise.all(analysisJobs);
 
   /* Render citation badges from similarity sources */
   renderCitationBadges();
@@ -123,6 +131,37 @@ function renderPaperInfo(p) {
   if (abstractEl) abstractEl.textContent = p.abstract || "No abstract provided.";
 }
 
+/* ── Consent-gated layout ────────────────────────────────────────────── */
+
+/**
+ * Shows exactly one of the two consent-dependent slots:
+ *   - #pdfViewerTrigger ("Read Full Version") when public_pdf_consent
+ *   - #imradViewerCard (IMRaD summary) when the author withheld consent
+ * Returns true when the full-PDF affordance is shown.
+ * @param {Object} p - mapped research object
+ */
+function applyConsentLayout(p) {
+  const permitFullPdf = !!p.public_pdf_consent;
+
+  const trigger = document.getElementById("pdfViewerTrigger");
+  if (trigger) trigger.style.display = permitFullPdf ? "block" : "none";
+
+  const imradCard = document.getElementById("imradViewerCard");
+  if (imradCard) imradCard.style.display = permitFullPdf ? "none" : "block";
+
+  return permitFullPdf;
+}
+
+/** Opens the author-approved full PDF in a new tab (backend re-checks
+ * public_pdf_consent on GET /repository/{source_stem}/pdf). */
+function readFullVersion() {
+  if (!paperData || !paperData.source) {
+    toast("Paper not loaded yet.", "error");
+    return;
+  }
+  viewPdfInNewTab(apiPdfUrl(paperData.source));
+}
+
 /**
  * Shows an error state in place of the paper title/abstract, and stops
  * the AI panels from spinning forever.
@@ -158,7 +197,6 @@ const TAB_PANELS = {
   similarity: "tabSimilarity",
   summary:    "tabSummary",
   gaps:       "tabGaps",
-  imrad:      "tabImrad",
 };
 
 /**
@@ -168,7 +206,6 @@ function getActiveTab() {
   const active = document.querySelector(".tab-btn.active");
   if (!active) return "similarity";
   const text = active.textContent.toLowerCase();
-  if (text.includes("imrad"))      return "imrad";
   if (text.includes("similarity")) return "similarity";
   if (text.includes("summary"))    return "summary";
   if (text.includes("gap"))        return "gaps";
@@ -177,7 +214,7 @@ function getActiveTab() {
 
 /**
  * Switches the active AI-analysis tab.
- * @param {string} tab - one of "similarity" | "summary" | "gaps" | "imrad"
+ * @param {string} tab - one of "similarity" | "summary" | "gaps"
  * @param {HTMLElement} el - the tab button that was clicked
  */
 function switchTab(tab, el) {

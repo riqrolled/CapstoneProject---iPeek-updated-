@@ -149,3 +149,38 @@ async def unlock_session(
     session_row.locked_by = None
     await db.commit()
     return {"ok": True, "locked": False}
+
+
+@router.post("/deactivate")
+async def deactivate_own(
+    current_user: User = Depends(get_current_user),
+    sid: str | None = Depends(get_current_sid),
+    db: AsyncSession = Depends(get_db),
+):
+    """Called by library.html on pagehide: removes THIS session's row so
+    a closed Library Terminal disappears from the dashboard tracker.
+    Idempotent — closing a terminal twice (or one with no row) is not an
+    error. Any lock held by the row is lifted along with it."""
+    session_row = await _get_own_session(sid, db)
+    if not session_row:
+        return {"ok": True, "removed": False}
+    await db.delete(session_row)
+    await db.commit()
+    return {"ok": True, "removed": True}
+
+
+@router.delete("/sessions/{target_sid}")
+async def terminate_session(
+    target_sid: str,
+    current_user: User = Depends(require_role("librarian")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Librarian-only: removes a terminal session from the tracker (and
+    lifts its lock). Intended for closed/stale Library Terminal rows."""
+    result = await db.execute(select(KioskSession).where(KioskSession.sid == target_sid))
+    session_row = result.scalar_one_or_none()
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    await db.delete(session_row)
+    await db.commit()
+    return {"ok": True, "removed": True}

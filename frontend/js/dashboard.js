@@ -101,6 +101,28 @@ async function loadKioskSessions() {
     });
     right.appendChild(btn);
 
+    const endBtn = document.createElement("button");
+    endBtn.className   = "btn btn-ghost btn-sm";
+    endBtn.textContent = "Terminate";
+    endBtn.title       = "Remove this terminal session from the list";
+    endBtn.addEventListener("click", async () => {
+      const ok = confirm(
+        `Terminate the terminal session of "${s.user}"?\n\n` +
+        `It will be removed from this list and any page lock on it will be lifted.`
+      );
+      if (!ok) return;
+      endBtn.disabled = true;
+      try {
+        await apiKioskTerminate(s.sid);
+        toast("Terminal session terminated.", "success");
+        await loadKioskSessions();
+      } catch (e) {
+        toast(`Terminate failed: ${e.message}`, "error");
+        endBtn.disabled = false;
+      }
+    });
+    right.appendChild(endBtn);
+
     row.appendChild(left);
     row.appendChild(right);
     list.appendChild(row);

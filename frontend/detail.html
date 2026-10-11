@@ -40,6 +40,34 @@
       <div class="abstract-text" id="abstractText">Loading...</div>
     </div>
 
+    <!-- Full-document card — restored from the old #pdfViewerTrigger slot.
+         Shown ONLY when the author gave submission-time public_pdf_consent;
+         otherwise hidden (remote viewers get the IMRaD card below instead). -->
+    <div class="card" id="pdfViewerTrigger" style="display:none;margin-bottom:14px;">
+      <button class="btn btn-accent btn-full" onclick="readFullVersion()">
+        📄 Read Full Version
+      </button>
+    </div>
+
+    <!-- IMRaD card — occupies the slot where the full-document viewer
+         (#pdfViewerCard) used to render. Shown ONLY when the author did
+         NOT give public_pdf_consent: remote viewers see the IMRaD summary
+         instead of the full PDF. Hidden entirely when consent was given.
+         Sits BETWEEN the Abstract and the AI refine bar. -->
+    <div class="card" id="imradViewerCard" style="display:none;margin-bottom:14px;">
+      <div class="section-label">IMRaD Summary</div>
+      <p class="text-muted text-sm" style="margin-bottom:10px;">
+        The author did not permit remote viewing of the full PDF — this
+        AI-generated summary is shown instead. The complete document
+        remains available in-person at the Library Viewing Station.
+      </p>
+      <div class="ai-box" id="imradBox">
+        <div style="display:flex;align-items:center;gap:8px;color:var(--muted);">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- AI refine bar -->
     <div class="card refine-bar" style="margin-bottom:14px;">
       <div class="refine-row">
@@ -48,7 +76,6 @@
           <option value="similarity">Similarity</option>
           <option value="summary">Summary</option>
           <option value="gap">Gap</option>
-          <option value="imrad">IMRaD</option>
         </select>
         <input id="refineInput" class="form-input refine-input" placeholder="Ask AI to expand or refocus the analysis...">
         <button id="refineBtn" class="btn btn-accent" onclick="refineAnalysis()">Refine</button>
@@ -66,7 +93,6 @@
         <button class="tab-btn active" onclick="switchTab('similarity',this)">Similarity Report</button>
         <button class="tab-btn" onclick="switchTab('summary',this)">AI Summary</button>
         <button class="tab-btn" onclick="switchTab('gaps',this)">Research Gap</button>
-        <button class="tab-btn" onclick="switchTab('imrad',this)">IMRaD</button>
       </div>
 
       <div id="tabSimilarity">
@@ -89,14 +115,6 @@
 
       <div id="tabGaps" style="display:none;">
         <div class="ai-box" id="gapsBox">
-          <div style="display:flex;align-items:center;gap:8px;color:var(--muted);">
-            <div class="spinner"></div>
-          </div>
-        </div>
-      </div>
-
-      <div id="tabImrad" style="display:none;">
-        <div class="ai-box" id="imradBox">
           <div style="display:flex;align-items:center;gap:8px;color:var(--muted);">
             <div class="spinner"></div>
           </div>

@@ -53,3 +53,13 @@ async def _migrate_columns(conn):
         await conn.execute(text(
             "ALTER TABLE ai_analysis ADD COLUMN imrad TEXT"
         ))
+
+    # Legacy rows predate the consent gate — backfill FALSE (privacy-
+    # conservative: summary-only remotely until resubmitted with consent).
+    # New submissions always get an explicit value from confirm_upload.
+    rows = await conn.execute(text("PRAGMA table_info(research)"))
+    existing = {row[1] for row in rows}
+    if "public_pdf_consent" not in existing:
+        await conn.execute(text(
+            "ALTER TABLE research ADD COLUMN public_pdf_consent BOOLEAN NOT NULL DEFAULT 0"
+        ))
