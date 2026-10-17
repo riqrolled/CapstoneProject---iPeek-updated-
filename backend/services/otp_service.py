@@ -94,6 +94,29 @@ def _send_email_sync(to_email: str, code: str) -> None:
         server.send_message(msg)
 
 
+def _send_password_email_sync(to_email: str, password: str) -> None:
+    """Delivers the auto-generated password ONCE, right after account
+    creation. Blocking SMTP send — always call via asyncio.to_thread().
+    SECURITY: the plaintext password lives only in this message body —
+    never logged, never in the subject, never stored anywhere."""
+    msg = MIMEText(
+        f"Your iPeek account has been created.\n\n"
+        f"Email: {to_email}\n"
+        f"Password: {password}\n\n"
+        f"After your first login, change this password from your Profile "
+        f"page, then delete this email.\n"
+        f"If you didn't create this account, please contact the library."
+    )
+    msg["Subject"] = "iPeek — Your account password"
+    msg["From"] = SMTP_USERNAME
+    msg["To"] = to_email
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls()
+        server.login(SMTP_USERNAME, SMTP_PASSWORD)
+        server.send_message(msg)
+
+
 class OTPService:
 
     async def request_otp(self, email: str, db: AsyncSession) -> None:
@@ -152,7 +175,7 @@ class OTPService:
         if record.attempts >= OTP_MAX_ATTEMPTS:
             raise ValueError("Too many incorrect attempts. Please request a new code.")
 
-        if _hash_code(code) != record.code_hash:
+        if not secrets.compare_digest(_hash_code(code), record.code_hash):
             record.attempts += 1
             await db.commit()
             raise ValueError("Incorrect code.")
@@ -160,6 +183,35 @@ class OTPService:
         record.verified = True
         await db.commit()
         return True
+
+    async def send_generated_password_email(self, to_email: str, password: str) -> None:
+        """Emails the freshly generated password to the verified address.
+        Raises ValueError on failure so the caller can roll back account
+        creation — never leave a user with an unknown password."""
+        try:
+            await asyncio.to_thread(_send_password_email_sync, to_email, password)
+        except Exception as e:
+            # Log the address and the exception only — NEVER the password.
+            logger.error(f"Failed to send password email to {to_email}: {e}")
+            raise ValueError(
+                "We couldn't email your password, so no account was created. "
+                "Please try verifying again."
+            )
+
+    async def unconsume(self, email: str, db: AsyncSession) -> None:
+        """Rolls a verified OTP back to unverified so the same code can be
+        re-submitted (used when account creation fails after verification,
+        e.g. the password email could not be sent)."""
+        email = email.strip().lower()
+        result = await db.execute(
+            select(OTPVerification)
+            .where(OTPVerification.email == email, OTPVerification.verified == True)  # noqa: E712
+            .order_by(OTPVerification.created_at.desc())
+        )
+        record = result.scalars().first()
+        if record:
+            record.verified = False
+            await db.commit()
 
     async def is_email_verified(self, email: str, db: AsyncSession) -> bool:
         """Called by /auth/register to confirm this email completed OTP
