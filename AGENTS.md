@@ -21,6 +21,8 @@ the only LLM. SMTP is used for OTP and generated-password emails.
 - Row Level Security must be enabled on every public table. After adding a table, tell
   the user to run ALTER TABLE ... ENABLE ROW LEVEL SECURITY.
 - Never print or log secrets or .env values.
+- Storage object keys must only be built by safe_object_key() in
+  services/storage.py — never by formatting pending/, public/, or versions/ keys by hand.
 - Do not run scripts that write real data (bulk_ingest real run, reindex_chroma,
   migrations against Supabase) without asking first.
 
@@ -56,3 +58,5 @@ backend/bulk_ingest.py loads archive PDFs, with the folder name deciding the col
 - Keep the design system unchanged (cream base, neomorphic raised elements, glass blur
   only on floating overlays, navy/yellow/orange palette).
 - Do not reintroduce Chat-with-AI, and do not hardcode secrets, URLs, or test data.
+
+Stop the backend before running bulk_ingest.py or reindex_chroma.py, and start it again afterward (local Chroma is not safe for two processes).

@@ -13,7 +13,7 @@ from schemas import (
     AdminUserCreate, AdminUserOut, DashboardStats, ResearchOut, UserOut, ValidateResearch,
 )
 from services.otp_service import determine_role_from_email
-from services.storage import storage_service
+from services.storage import sibling_object_key, storage_service
 from services.vectorstore import vectorstore_service
 
 router = APIRouter(prefix="/admin", tags=["Admin (Librarian only)"])
@@ -77,8 +77,15 @@ async def validate_research(
         # updating research.filepath in the same transaction. Order matters:
         # copy first, commit DB, then remove pending — so a failure never
         # loses the file.
-        pending_key = research.filepath  # pending/{stem}.pdf
-        public_key = storage_service.public_key(research.source_stem)
+        pending_key = research.filepath  # pending/{safe stem}.pdf
+        # Destination is the counterpart of the stored key — never rebuilt
+        # from source_stem (the key is sanitized, source_stem is not).
+        public_key = sibling_object_key(pending_key)
+        if public_key is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot approve — stored document is not in the pending area.",
+            )
 
         # Step 1: copy pending → public (raise if it fails; paper stays pending)
         try:
@@ -151,16 +158,22 @@ async def remove_research(
     await rag_service.clear_cache_for(research.id, db)   # or research_id inside the bulk loop
     await vectorstore_service.delete_by_source(research.source_stem)
 
-    # Remove every bucket object tied to this paper: current filepath,
-    # public/ copy if different, and all version archives — no orphans.
-    keys_to_remove = {research.filepath}
-    public_key = storage_service.public_key(research.source_stem)
-    keys_to_remove.add(public_key)
+    # Remove every bucket object tied to this paper: the authoritative
+    # filepath, its pending/public counterpart (if any), and all version
+    # archives. Keys come from the DB (filepath), never rebuilt from
+    # source_stem. remove() ignores missing objects.
+    keys_to_remove = set()
+    if research.filepath:
+        keys_to_remove.add(research.filepath)
+        sibling = sibling_object_key(research.filepath)
+        if sibling:
+            keys_to_remove.add(sibling)
     version_result = await db.execute(
         select(ResearchVersion).where(ResearchVersion.research_id == research.id)
     )
     for v in version_result.scalars().all():
-        keys_to_remove.add(v.filepath)
+        if v.filepath:
+            keys_to_remove.add(v.filepath)
     for key in keys_to_remove:
         await asyncio.to_thread(storage_service.remove, key)
 
@@ -192,12 +205,18 @@ async def bulk_delete_research(
         from services.rag import rag_service
         await rag_service.clear_cache_for(research.id, db)   # or research_id inside the bulk loop
         await vectorstore_service.delete_by_source(research.source_stem)
-        keys_to_remove = {research.filepath, storage_service.public_key(research.source_stem)}
+        keys_to_remove = set()
+        if research.filepath:
+            keys_to_remove.add(research.filepath)
+            sibling = sibling_object_key(research.filepath)
+            if sibling:
+                keys_to_remove.add(sibling)
         version_result = await db.execute(
             select(ResearchVersion).where(ResearchVersion.research_id == research.id)
         )
         for v in version_result.scalars().all():
-            keys_to_remove.add(v.filepath)
+            if v.filepath:
+                keys_to_remove.add(v.filepath)
         for key in keys_to_remove:
             await asyncio.to_thread(storage_service.remove, key)
         await db.delete(research)

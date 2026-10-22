@@ -24,7 +24,9 @@ Guarantees / behavior:
   The LLM-extracted college text is recorded in the report only, to measure
   extraction accuracy later.
 - One PDF at a time; Groq 429s retried with exponential backoff (max 5
-  tries); a bad file is reported as failed and the run continues.
+  tries) and connection/JSON errors retried twice with a short wait; a
+  bad file is reported as failed and the run continues (failed files
+  are never written to the extraction cache).
 - A failure after the bucket upload but before the DB commit rolls back the
   bucket object AND the Chroma chunks for that file — no orphans.
 - --dry-run runs steps 1-3 only (existence/size/text checks + metadata
@@ -64,6 +66,9 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
 MAX_FILE_BYTES = 50 * 1024 * 1024      # 50 MB per-file cap (archive script)
 MAX_LLM_TRIES = 5                      # Groq 429 retries (exponential backoff)
+MAX_TRANSIENT_TRIES = 3                # total tries for connection/JSON errors
+                                       # (i.e. 2 extra tries)
+TRANSIENT_WAIT = 2.0                   # short fixed wait before a transient retry
 DRY_RUN_REASON = "dry-run: would ingest"
 
 # Bump whenever extraction changes meaning (prompt wording, ABSTRACT section
@@ -114,6 +119,19 @@ def _is_daily_limit(err: Exception) -> bool:
     once a day — so the run must stop instead of burning every remaining
     file on 429s."""
     return "tokens per day" in str(err).lower()
+
+
+def _is_transient(err: Exception) -> bool:
+    """Errors that are usually transient and worth a couple of cheap
+    retries: the HTTP call to Groq never completed (APIConnectionError —
+    matched by name so no SDK import is needed here) or the model's answer
+    was not valid JSON (json.JSONDecodeError, e.g. a truncated reply).
+    Neither means the PDF itself is bad."""
+    if type(err).__name__ == "APIConnectionError":
+        return True
+    if isinstance(err, json.JSONDecodeError) or type(err).__name__ == "JSONDecodeError":
+        return True
+    return False
 
 
 class DailyLimitReached(Exception):
@@ -205,10 +223,17 @@ def _save_cache(cache: dict) -> None:
 
 
 async def _extract_with_retry(pages: list[dict], stem: str) -> dict:
-    """Same extractor the upload preview uses, but with 429 backoff:
-    up to MAX_LLM_TRIES attempts for rate limits (2, 4, 8, 16 s waits);
-    any other error propagates immediately (file marked failed)."""
-    for attempt in range(1, MAX_LLM_TRIES + 1):
+    """Same extractor the upload preview uses, plus retries for the errors
+    that are usually transient:
+    - Groq 429: up to MAX_LLM_TRIES attempts (2, 4, 8, 16 s waits);
+    - APIConnectionError / JSONDecodeError: up to MAX_TRANSIENT_TRIES
+      attempts in total (2 extra tries, short fixed TRANSIENT_WAIT).
+    A daily-quota hit stops the run, and any other error propagates
+    immediately (file marked failed, nothing cached). The counters are
+    per-file and never reset, so one file can never spin forever."""
+    tries_rate_limit = 0
+    tries_transient = 0
+    while True:
         try:
             return await asyncio.to_thread(
                 ingestor._extract_metadata, pages, stem, raise_on_error=True,
@@ -219,11 +244,21 @@ async def _extract_with_retry(pages: list[dict], stem: str) -> dict:
                 # quota. Stop the whole run rather than retrying every
                 # remaining file into the same wall.
                 raise DailyLimitReached(_safe(e)) from e
-            if _is_rate_limit(e) and attempt < MAX_LLM_TRIES:
-                wait = 2 * (2 ** (attempt - 1))
-                print(f"    Groq rate limit — retry {attempt}/{MAX_LLM_TRIES} in {wait}s...")
-                await asyncio.sleep(wait)
-                continue
+            if _is_rate_limit(e):
+                tries_rate_limit += 1
+                if tries_rate_limit < MAX_LLM_TRIES:
+                    wait = 2 * (2 ** (tries_rate_limit - 1))
+                    print(f"    Groq rate limit — retry {tries_rate_limit}/{MAX_LLM_TRIES} in {wait}s...")
+                    await asyncio.sleep(wait)
+                    continue
+            elif _is_transient(e):
+                tries_transient += 1
+                if tries_transient < MAX_TRANSIENT_TRIES:
+                    print(f"    transient {type(e).__name__} — retry "
+                          f"{tries_transient}/{MAX_TRANSIENT_TRIES - 1} extra "
+                          f"in {TRANSIENT_WAIT:g}s...")
+                    await asyncio.sleep(TRANSIENT_WAIT)
+                    continue
             raise
 
 
@@ -292,6 +327,9 @@ async def process_file(code: str, path: Path, ctx) -> None:
         return
 
     # ── Step 3: metadata (cache first — never double-spend Groq) ───────
+    # Every failure path returns above/below the cache write: a file whose
+    # extraction failed (after the retries above) is never stored, so a
+    # later run re-extracts it instead of reusing partial/garbage metadata.
     cached = cache.get(sha)
     if cached and isinstance(cached.get("meta"), dict):
         meta = cached["meta"]
@@ -302,6 +340,12 @@ async def process_file(code: str, path: Path, ctx) -> None:
             raise                      # run-level stop: handled in main()
         except Exception as e:
             finish("failed", f"metadata extraction failed: {_safe(e)}", final_stem)
+            return
+        if not isinstance(meta, dict) or not meta:
+            # Defensive: nothing usable came back — treat as a failed file
+            # and keep it out of the cache entirely.
+            finish("failed", "metadata extraction returned no usable metadata",
+                   final_stem)
             return
         cache[sha] = {
             "meta": meta, "filename": filename,

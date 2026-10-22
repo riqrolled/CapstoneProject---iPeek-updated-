@@ -81,15 +81,27 @@ async function initPage() {
   const analysisJobs = [runSimilarity(), runSummary(), runGaps()];
   if (!permitFullPdf) analysisJobs.push(runImrad());
 
-  await Promise.all(analysisJobs);
+  const outcomes = await Promise.all(analysisJobs);
 
   /* Render citation badges from similarity sources */
   renderCitationBadges();
 
-  const badge = document.getElementById("analysisStatus");
+  /* Header badge reflects the mix of successful/failed analysis tabs:
+     all ok → Complete, some failed → Partial, all failed → Failed.
+     The load-error path keeps its own "Unavailable" badge (showError). */
+  const failed = outcomes.filter(ok => !ok).length;
+  const badge  = document.getElementById("analysisStatus");
   if (badge) {
-    badge.textContent = "Complete";
-    badge.className   = "badge badge-validated";
+    if (failed === 0) {
+      badge.textContent = "Complete";
+      badge.className   = "badge badge-validated";
+    } else if (failed === outcomes.length) {
+      badge.textContent = "Failed";
+      badge.className   = "badge badge-rejected";
+    } else {
+      badge.textContent = "Partial";
+      badge.className   = "badge badge-pending";
+    }
   }
 }
 
@@ -309,6 +321,7 @@ async function runSimilarity() {
     const data = await apiSimilarity(researchId);
     renderSimilarityBars(data.result);
     lastSimilaritySources = data.sources || [];
+    return true;
   } catch (e) {
     const el = document.getElementById("simBars");
     if (el) {
@@ -319,6 +332,7 @@ async function runSimilarity() {
       el.appendChild(msg);
     }
     lastSimilaritySources = [];
+    return false;
   }
 }
 
@@ -327,11 +341,22 @@ async function runSummary() {
   try {
     const data = await apiSummary(researchId);
     const clean = data.result.replace(/\*\*/g, "");
+    if (!clean.trim()) {
+      if (box) {
+        box.textContent = "";
+        const msg = document.createElement("span");
+        msg.className   = "tab-error";
+        msg.textContent = "No summary data available.";
+        box.appendChild(msg);
+      }
+      return true;
+    }
     if (box && typeof typeWriter === "function") {
       typeWriter(box, clean);
     } else if (box) {
       box.textContent = clean;
     }
+    return true;
   } catch (e) {
     if (box) {
       box.textContent = "";
@@ -340,6 +365,7 @@ async function runSummary() {
       msg.textContent = `⚠️ Summary failed: ${e.message}`;
       box.appendChild(msg);
     }
+    return false;
   }
 }
 
@@ -348,6 +374,7 @@ async function runGaps() {
   try {
     const data = await apiGaps(researchId);
     renderGapsList(data.result);
+    return true;
   } catch (e) {
     if (box) {
       box.textContent = "";
@@ -356,6 +383,7 @@ async function runGaps() {
       msg.textContent = `⚠️ Gap analysis failed: ${e.message}`;
       box.appendChild(msg);
     }
+    return false;
   }
 }
 
@@ -364,6 +392,7 @@ async function runImrad() {
   try {
     const data = await apiImrad(researchId);
     renderImrad(data.result);
+    return true;
   } catch (e) {
     if (box) {
       box.textContent = "";
@@ -372,6 +401,7 @@ async function runImrad() {
       msg.textContent = `⚠️ IMRaD summary failed: ${e.message}`;
       box.appendChild(msg);
     }
+    return false;
   }
 }
 
