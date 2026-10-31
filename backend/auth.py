@@ -13,11 +13,12 @@ from typing import Optional
 import bcrypt
 from jose import jwt
 
+from config import ACCESS_TOKEN_EXPIRE_MINUTES
+
 # In production, load this from an environment variable / .env file -
 # never commit a real secret to source control.
 SECRET_KEY = os.environ.get("IPEEK_SECRET_KEY", "dev-secret-change-me")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
 
 # NOTE: uses bcrypt directly, NOT passlib. passlib==1.7.4's internal
 # self-test is incompatible with bcrypt>=4.x's stricter 72-byte handling

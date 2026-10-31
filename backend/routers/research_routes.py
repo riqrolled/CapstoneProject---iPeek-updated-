@@ -5,14 +5,18 @@ import asyncio
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Response
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import MAX_UPLOAD_SIZE, STAGING_DIR
 from database import get_db
 from dependencies import get_current_sid, is_kiosk_session, require_role
-from models import Feedback, Research, StatusEnum, User
-from schemas import FeedbackOut, ResearchOut, UploadConfirmIn, UploadPreviewOut
+from models import College, Feedback, Research, RoleEnum, StatusEnum, User
+from schemas import (
+    FeedbackOut, RepositoryFiltersOut, ResearchOut, UploadConfirmIn,
+    UploadPreviewOut,
+)
+from services.colleges import resolve_college
 from services.ingestor import ingestor
 from services.storage import storage_service
 from fastapi.responses import FileResponse
@@ -136,12 +140,71 @@ async def upload_confirm(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/browse", response_model=List[ResearchOut])
-async def browse_repository(
+@router.get("/filters", response_model=RepositoryFiltersOut)
+async def repository_filters(
     current_user: User = Depends(require_role("student", "faculty", "librarian")),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Research).where(Research.status == StatusEnum.approved))
+    """Everything the browse page needs to build its filter controls in one
+    call: the years that actually exist among approved papers (newest
+    first) and every canonical college with its approved count.
+
+    Only APPROVED papers are counted — the browse list is approved-only.
+    Colleges with no approved papers still appear (count 0) so the control
+    does not change shape as the archive grows.
+    """
+    year_rows = (await db.execute(
+        select(Research.year)
+        .where(Research.status == StatusEnum.approved, Research.year.is_not(None))
+        .distinct()
+    )).scalars().all()
+    years = sorted({int(y) for y in year_rows if y is not None}, reverse=True)
+
+    count_rows = (await db.execute(
+        select(Research.college_id, func.count())
+        .where(Research.status == StatusEnum.approved)
+        .group_by(Research.college_id)
+    )).all()
+    counts = {cid: n for cid, n in count_rows if cid is not None}
+
+    college_rows = (await db.execute(
+        select(College).order_by(College.name)
+    )).scalars().all()
+    colleges = [
+        {"id": c.id, "code": c.code, "name": c.name, "count": counts.get(c.id, 0)}
+        for c in college_rows
+    ]
+
+    # Librarians are not tied to a college; a student/faculty member's own
+    # department resolves to a college only when the text matches a
+    # canonical name (unmatched free text -> null, never an error).
+    department = None if current_user.role == RoleEnum.librarian else current_user.department
+    own_id = resolve_college(department)
+    own_college = next((c for c in colleges if c["id"] == own_id), None)
+
+    return RepositoryFiltersOut(
+        years=years,
+        latest_year=years[0] if years else None,
+        colleges=colleges,
+        user_college=own_college,
+    )
+
+
+@router.get("/browse", response_model=List[ResearchOut])
+async def browse_repository(
+    college_id: Optional[int] = None,
+    year: Optional[int] = None,
+    current_user: User = Depends(require_role("student", "faculty", "librarian")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Approved papers only, optionally narrowed by college and/or year
+    (the two filters advertised by GET /repository/filters)."""
+    query = select(Research).where(Research.status == StatusEnum.approved)
+    if college_id is not None:
+        query = query.where(Research.college_id == college_id)
+    if year is not None:
+        query = query.where(Research.year == year)
+    result = await db.execute(query)
     return result.scalars().all()
 
 

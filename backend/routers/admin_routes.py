@@ -1,22 +1,74 @@
 import asyncio
+import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import generate_password, hash_password
 from database import get_db
 from dependencies import require_role
-from models import DeletionLog, Feedback, Research, ResearchVersion, RoleEnum, StatusEnum, User
+from models import (
+    AIAnalysis, DeletionLog, Feedback, Notification, Research, ResearchVersion,
+    RoleEnum, StatusEnum, User,
+)
 from schemas import (
-    AdminUserCreate, AdminUserOut, DashboardStats, ResearchOut, UserOut, ValidateResearch,
+    AdminUserCreate, AdminUserOut, DashboardStats, RepositoryStatusOut,
+    ResearchOut, UserOut, ValidateResearch,
 )
 from services.otp_service import determine_role_from_email
 from services.storage import sibling_object_key, storage_service
 from services.vectorstore import vectorstore_service
 
 router = APIRouter(prefix="/admin", tags=["Admin (Librarian only)"])
+logger = logging.getLogger(__name__)
+
+# Notification.message is VARCHAR(255) — keep the quoted title short enough
+# that the fixed wording below always fits.
+_NOTIFICATION_TITLE_CHARS = 150
+
+
+def _review_notification(research: Research, approved: bool) -> Notification:
+    """Built in the reviewer's transaction so the status change and the
+    student's notification are committed together (or not at all)."""
+    title = (research.title or "Untitled").strip()[:_NOTIFICATION_TITLE_CHARS]
+    if approved:
+        message = f'Your research "{title}" was approved.'
+    else:
+        message = (
+            f'Your research "{title}" was returned with feedback. '
+            f"Check My Submissions."
+        )
+    return Notification(
+        user_id=research.student_id,
+        research_id=research.id,
+        message=message,
+        status="unread",
+    )
+
+
+async def _delete_research_children(research_id: int, db: AsyncSession) -> None:
+    """Detach/remove everything that points at a research row before the row
+    itself is deleted.
+
+    feedback / research_versions / ai_analysis have NOT NULL foreign keys, so
+    a bare DELETE of the paper would raise instead of cascading. Notifications
+    keep their message for the student's history but lose the link
+    (research_id -> NULL), which is why that column is nullable.
+    """
+    await db.execute(delete(Feedback).where(Feedback.research_id == research_id))
+    await db.execute(
+        delete(ResearchVersion).where(ResearchVersion.research_id == research_id)
+    )
+    await db.execute(
+        delete(AIAnalysis).where(AIAnalysis.research_id == research_id)
+    )
+    await db.execute(
+        update(Notification)
+        .where(Notification.research_id == research_id)
+        .values(research_id=None)
+    )
 
 
 @router.get("/dashboard", response_model=DashboardStats)
@@ -107,6 +159,7 @@ async def validate_research(
                 librarian_id=current_user.id,
                 message=payload.feedback_message,
             ))
+        db.add(_review_notification(research, approved=True))
         await db.commit()
         await db.refresh(research)
 
@@ -118,7 +171,8 @@ async def validate_research(
             import logging
             logging.getLogger(__name__).warning(
                 f"Approved research {research.id} but failed to remove pending object "
-                f"'{pending_key}': {e}. Orphan will be cleaned by fix_approved_filepaths.py."
+                f"'{pending_key}': {e}. The orphan in pending/ is harmless and can be "
+                f"removed manually."
             )
         return research
 
@@ -132,9 +186,52 @@ async def validate_research(
             librarian_id=current_user.id,
             message=payload.feedback_message,
         ))
+    db.add(_review_notification(research, approved=False))
     await db.commit()
     await db.refresh(research)
     return research
+
+
+@router.get("/repository/status", response_model=RepositoryStatusOut)
+async def repository_status(
+    current_user: User = Depends(require_role("librarian")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Health card for the librarian dashboard: how many chunks are in the
+    vector store and how many papers the archive holds.
+
+    chunks_indexed is null (not 0) when ChromaDB cannot be read, so the UI
+    can say "unavailable" instead of claiming an empty index — a failed
+    read and a genuinely empty store are different problems.
+    """
+    approved = await db.scalar(
+        select(func.count()).where(Research.status == StatusEnum.approved)
+    )
+    pending = await db.scalar(
+        select(func.count()).where(Research.status == StatusEnum.pending)
+    )
+    returned = await db.scalar(
+        select(func.count()).where(Research.status == StatusEnum.returned)
+    )
+
+    try:
+        chunks = await vectorstore_service.count_chunks()
+        status = "ok"
+        message = f"{chunks} chunks indexed in the vector store."
+    except Exception as e:
+        chunks = None
+        status = "degraded"
+        message = "Vector store is unavailable — search and AI features may fail."
+        logger.error(f"Repository status: chunk count failed: {e}")
+
+    return RepositoryStatusOut(
+        status=status,
+        approved=approved or 0,
+        pending=pending or 0,
+        returned=returned or 0,
+        chunks_indexed=chunks,
+        message=message,
+    )
 
 
 @router.delete("/repository/{research_id}")
@@ -177,6 +274,7 @@ async def remove_research(
     for key in keys_to_remove:
         await asyncio.to_thread(storage_service.remove, key)
 
+    await _delete_research_children(research.id, db)
     await db.delete(research)
     await db.commit()
     return {"detail": "Research removed"}
@@ -219,6 +317,7 @@ async def bulk_delete_research(
                 keys_to_remove.add(v.filepath)
         for key in keys_to_remove:
             await asyncio.to_thread(storage_service.remove, key)
+        await _delete_research_children(research.id, db)
         await db.delete(research)
         deleted.append(rid)
 
@@ -315,7 +414,12 @@ async def admin_create_user(
         )
 
     result = await db.execute(
-        select(User).where((User.username == payload.email) | (User.email == payload.email))
+        select(User).where(
+            or_(
+                func.lower(User.username) == payload.email,
+                func.lower(User.email) == payload.email,
+            )
+        )
     )
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Username or email already registered")

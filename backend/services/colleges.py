@@ -3,13 +3,17 @@ services/colleges.py
 --------------------
 Canonical college registry + resolution.
 
-Two consumers, deliberately kept separate:
+Three consumers, deliberately kept separate:
 
 1. NORMAL upload flow — resolve_college(text) maps the SAME free-text value
    confirm_upload stores in research.department to a colleges.id
    (None when unknown/unmatched: college_id stays NULL, never blocks).
 
-2. BULK ingest (bulk_ingest.py) — the FOLDER decides the college; the LLM's
+2. REGISTRATION — resolve_college_name(text) must match a canonical college
+   for students/faculty (400 otherwise; librarians are exempt).
+   GET /auth/colleges exposes this registry to the sign-up dropdown.
+
+3. BULK ingest (bulk_ingest.py) — the FOLDER decides the college; the LLM's
    extracted college text is only reported (via resolve_college_code) to
    measure extraction accuracy. Nothing here maps legacy names to the
    college that replaced them: "Industrial Technology" is still CIT and
@@ -99,6 +103,23 @@ def resolve_college(text) -> int | None:
     Requires seed_colleges() to have run (init_db does it at startup)."""
     code = resolve_college_code(text)
     return _IDS.get(code) if code else None
+
+
+def resolve_college_name(text) -> str | None:
+    """text -> canonical college NAME (None when unresolved). Pure text, no
+    DB access — used to store the canonical spelling on a user row."""
+    code = resolve_college_code(text)
+    return dict(COLLEGES).get(code) if code else None
+
+
+def normalize_department(text) -> str | None:
+    """Store the canonical college name when the text resolves; otherwise
+    keep the typed text as-is (never blocks a profile edit — registration
+    enforces a known college separately)."""
+    raw = str(text or "").strip()
+    if not raw:
+        return None
+    return resolve_college_name(raw) or raw
 
 
 async def _rebuild_registry(db: AsyncSession) -> None:

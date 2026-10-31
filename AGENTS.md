@@ -10,8 +10,16 @@ the only LLM. SMTP is used for OTP and generated-password emails.
 ## Auth and roles
 - Role is always derived on the server from the email domain. Never trust a client role.
   @students.isatu.edu.ph = student; @isatu.edu.ph on the LIBRARIAN_EMAILS allowlist =
-  librarian, otherwise faculty. Faculty has the same access as students.
+  librarian, otherwise faculty. Faculty has the same access as students, EXCEPT the
+  /ai/* routes: faculty is intentionally blocked there (403). Do not "fix" that guard.
 - Passwords: bcrypt used directly (pinned 4.0.1). Never add passlib.
+- Email is the login identifier and cannot be changed after registration.
+- Registration requires students and faculty to pick a seeded college: an
+  unresolved `department` is a 400, and only the canonical college name is
+  stored. Librarians are exempt (they are not tied to a college).
+- Password recovery is self-service by email OTP only, which emails a newly generated
+  password. There is no admin password reset and no refresh token; JWT lifetime comes
+  from ACCESS_TOKEN_EXPIRE_MINUTES in config.py.
 - Users are soft-deleted only (is_active). Never hard-delete users or cascade-delete
   their research.
 
@@ -35,6 +43,8 @@ the only LLM. SMTP is used for OTP and generated-password emails.
 
 ## Reference files
 backend/bulk_ingest.py loads archive PDFs, with the folder name deciding the college.
+check_users.py, cleanup_users.py and fix_approved_filepaths.py were removed — do not
+recreate them (storage keys come from safe_object_key() only).
 
 ## Keeping this file current
 - When the user states a new rule, changes an existing one, or makes a decision that
@@ -51,6 +61,8 @@ backend/bulk_ingest.py loads archive PDFs, with the folder name deciding the col
 
 
   ## Frontend work (also applies to Codex)
+- The frontend is owned by the teammate: backend-only tasks must not edit frontend/.
+  When a backend fix needs frontend work, record it in docs/frontend_function_map.md.
 - Edit only files under frontend/. Do not modify anything in backend/. If the backend
   is missing something or has a bug, report it and stop instead of changing it.
 - Backend routes and response shapes are fixed. Check the API helpers in

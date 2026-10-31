@@ -53,6 +53,12 @@ PREVIEW_MAX_AGE_SECONDS  = 3600
 
 LOGIN_RATE_LIMIT = "10/minute"
 
+# ─────────────────────────────────────────────────────────────────────────
+# Access-token lifetime (minutes). No refresh tokens: when a token expires
+# the client must log in again (401 "Session expired. Please log in again.").
+# ─────────────────────────────────────────────────────────────────────────
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "120"))
+
 CORS_ORIGINS = ["http://localhost:5500"]
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -65,6 +71,8 @@ SMTP_USERNAME = os.environ.get("SMTP_USERNAME")  # the SCHOOL's sending Gmail ad
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")  # Gmail App Password — not the real password
 OTP_EXPIRE_MINUTES = 10
 OTP_MAX_ATTEMPTS = 5
+# Minimum wait between two OTP requests for the SAME email address.
+OTP_RESEND_COOLDOWN_SECONDS = 60
 
 # Institutional email domains — the actual role-assignment mechanism.
 # @students.isatu.edu.ph -> student

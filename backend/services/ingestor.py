@@ -510,6 +510,60 @@ Document ({doc_label}):
 
     # ── CONFIRM ──────────────────────────────────────────────────────
 
+    def _validated_metadata(self, ai_meta: dict, final_values: dict) -> dict:
+        """Merge the uploader's edits over the AI extraction, rejecting
+        values the DB cannot store (a ValueError becomes a 400 in the route).
+
+        Only these keys are read: title, authors (alias "members"),
+        department, year, abstract. Anything else in final_values is
+        ignored, so a client can never set server-owned columns
+        (source_stem, filepath, status, reviewed_by) through this payload.
+
+        Blank fields are not errors — they simply keep the extracted value,
+        which is also what the preview screen shows.
+        """
+        meta = dict(ai_meta)
+
+        def _text(value) -> str:
+            return str(value).strip() if value is not None else ""
+
+        title = _text(final_values.get("title"))
+        if title:
+            if len(title) > 255:
+                raise ValueError("Title must be 255 characters or fewer.")
+            meta["title"] = title
+
+        # "members" is the historical name in the upload form; both are
+        # accepted, and an explicit "authors" wins when both are sent.
+        authors = _text(final_values.get("authors")) or _text(final_values.get("members"))
+        if authors:
+            if len(authors) > 255:
+                raise ValueError("Authors must be 255 characters or fewer.")
+            meta["authors"] = authors
+
+        department = _text(final_values.get("department"))
+        if department:
+            if len(department) > 100:
+                raise ValueError("Department must be 100 characters or fewer.")
+            meta["college"] = department
+
+        abstract = _text(final_values.get("abstract"))
+        if abstract:
+            meta["abstract"] = abstract
+
+        year_raw = _text(final_values.get("year"))
+        if year_raw:
+            try:
+                year = int(year_raw)
+            except ValueError:
+                year = self._normalize_year(year_raw)
+            max_year = datetime.now(timezone.utc).year + 1
+            if year is None or not (1990 <= year <= max_year):
+                raise ValueError(f"Year must be a number between 1990 and {max_year}.")
+            meta["year_normalized"] = year
+
+        return meta
+
     async def confirm_upload(
         self, preview_id: str, final_values: dict, public_pdf_consent: bool,
         student_id: int, db: AsyncSession
@@ -564,17 +618,7 @@ Document ({doc_label}):
         if not pages:
             raise ValueError("No text found in this PDF at confirm time.")
 
-        meta = dict(ai_meta)
-        if final_values.get("title"):
-            meta["title"] = final_values["title"]
-        if final_values.get("department"):
-            meta["college"] = final_values["department"]
-        if final_values.get("members"):
-            meta["authors"] = final_values["members"]
-        if final_values.get("abstract"):
-            meta["abstract"] = final_values["abstract"]
-        if final_values.get("year"):
-            meta["year_normalized"] = self._normalize_year(final_values["year"])
+        meta = self._validated_metadata(ai_meta, final_values)
 
         # Same value both branches below store in research.department —
         # resolve it while we have it. "Unknown"/unmatched -> None (NULL),
