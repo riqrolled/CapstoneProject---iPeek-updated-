@@ -112,13 +112,6 @@ function renderList(submissions) {
       card.appendChild(fbBox);
     }
 
-    /* Approved date shown when applicable */
-    if (s.status === "approved" && s.approved_at) {
-      const approvedNote = document.createElement("div");
-      approvedNote.style.cssText = "font-size:0.76rem;color:var(--success);margin-top:6px;";
-      approvedNote.textContent = `✅ Approved on ${s.approved_at.slice(0, 10)}`;
-      card.appendChild(approvedNote);
-    }
 
     /* Uploaders keep full-PDF access to their OWN papers (backend
        ownership exemption) — everywhere else full PDFs are kiosk-only. */

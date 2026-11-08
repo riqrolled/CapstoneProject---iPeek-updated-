@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <script src="js/page-fade.js" defer blocking="render"></script>
 </head>
 <body style="visibility:hidden;">
   <nav class="navbar">
@@ -35,7 +36,7 @@
         <input type="checkbox" id="includeInactive">
         Include deactivated accounts
       </label>
-      <button class="btn btn-primary" onclick="openAddUserModal()">+ Add User</button>
+      <button class="btn btn-primary" onclick="openAddUserModal()"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#upload"/></svg> Add User</button>
     </div>
 
     <div class="card">
@@ -50,7 +51,7 @@
   </div>
 
   <!-- Deactivate / Reactivate confirm -->
-  <div id="confirmModal" class="modal-overlay" style="display:none;">
+  <dialog id="confirmModal" aria-labelledby="confirmTitle" class="modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width:420px;width:100%;">
       <h3 class="modal-title" id="confirmTitle">Confirm</h3>
       <p class="modal-subtitle" id="confirmMsg"></p>
@@ -59,12 +60,12 @@
         <button class="btn btn-danger" id="confirmOkBtn">Confirm</button>
       </div>
     </div>
-  </div>
+  </dialog>
 
   <!-- Add user -->
-  <div id="addModal" class="modal-overlay" style="display:none;">
+  <dialog id="addModal" aria-label="Add user" class="modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width:460px;width:100%;">
-      <div id="addFormView">
+      <form id="addFormView" novalidate onsubmit="event.preventDefault(); createUser();">
         <h3 class="modal-title">Add User</h3>
         <p class="modal-subtitle">
           The role is derived from the email domain. A secure password is
@@ -90,10 +91,10 @@
           </select>
         </div>
         <div class="modal-actions">
-          <button class="btn btn-ghost" onclick="closeAddModal()">Cancel</button>
-          <button class="btn btn-primary" id="createUserBtn" onclick="createUser()">Create account</button>
+          <button type="button" class="btn btn-ghost" onclick="closeAddModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="createUserBtn">Create account</button>
         </div>
-      </div>
+      </form>
 
       <div id="addResultView" style="display:none;">
         <h3 class="modal-title">Account created</h3>
@@ -111,12 +112,12 @@
         </div>
       </div>
     </div>
-  </div>
+  </dialog>
 
   <div class="toast-wrap" id="toasts"></div>
 
-  <script src="js/page-fade.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/keyboard.js"></script>
   <script src="js/pillnav.js"></script>
   <script src="js/motion.js"></script>
   <script src="js/users.js"></script>

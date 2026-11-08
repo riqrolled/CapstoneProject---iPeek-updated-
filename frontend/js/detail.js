@@ -1,667 +1,362 @@
-/**
- * detail.js
- * ---------
- * Research Detail page: loads one paper, runs AI similarity/summary/gaps/
- * IMRaD analysis. Full-PDF viewing on this page is gated by the author's
- * submission-time public_pdf_consent:
- *   - consent == true  → "Read Full Version" button (#pdfViewerTrigger,
- *     restored from the pre-kiosk layout) opens the PDF in a new tab;
- *     the IMRaD card is hidden entirely.
- *   - consent == false → no PDF affordance; the IMRaD summary card
- *     (#imradViewerCard) sits in the slot where the full-document viewer
- *     used to render, and the AI Analysis tabs are summary-only
- *     (Similarity / AI Summary / Research Gap — no IMRaD tab).
- * The Library Viewing Station (library.js) is unaffected by consent.
- *
- * FIX NOTES (added — these were missing and caused the page to show
- * only the static shell with every panel stuck on "Loading..."):
- *   - docId was referenced but never parsed from the URL — threw a
- *     ReferenceError on the very first line of initPage(), which
- *     silently killed everything after it.
- *   - renderPaperInfo, showError, switchTab, renderSimilarityBars,
- *     renderSimilarProjects, renderGapsList, sendChat, chatKey were
- *     called by this file and by detail.html's onclick handlers, but
- *     never defined.
- *
- * All DOM writes use textContent/createElement, never innerHTML with
- * data values — matches the XSS-safe pattern used across the rest of
- * the app (see browse.js, review.js, my-submissions.js).
- */
+(() => {
+/** Research reader. Existing analysis endpoints only; refinements send no history. */
+let canUseAI = false;
+let paperData = null;
+let researchId = null;
+let activePaper = null;
+let readerView = "paper";
+let readerEventsBound = false;
+// Reopening a paper while its analysis is pending shares the existing request.
+// Settled results remain the server cache's responsibility.
+const pendingAnalyses = new Map();
+const TARGET_LABELS = { similarity: "Research Similarity", summary: "Summary", gap: "Research Gaps", imrad: "IMRaD" };
+const ANALYSIS = {
+  similarity: { box: "similarityBox", load: apiSimilarity, loading: "Finding related studies…" },
+  summary: { box: "summaryBox", load: apiSummary, loading: "Preparing the repository summary…" },
+  gap: { box: "gapsBox", load: apiGaps, loading: "Looking for research gaps…" },
+  imrad: { box: "imradBox", load: apiImrad, loading: "Preparing the reading guide…" },
+};
+const byId = id => document.getElementById(id);
+const currentSource = () => new URLSearchParams(window.location.search).get("id");
+const isCurrent = context => context === activePaper && context.source === currentSource();
 
-/* ── URL param ───────────────────────────────────────────────────────────── */
-const docId = new URLSearchParams(window.location.search).get("id");
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function readable(value) {
+  return value == null || /^(unknown|untitled|\?)$/i.test(String(value).trim()) ? "" : String(value).trim();
+}
+function resultText(data) { return typeof data?.result === "string" ? data.result.trim() : ""; }
 
-/* ── State ───────────────────────────────────────────────────────────────── */
-let paperData    = null;
-let researchId    = null;
+// Preserve page citations and returned prose; never interpret response HTML.
+function analysisProse(text) {
+  const prose = element("div", "analysis-text");
+  let offset = 0;
+  for (const match of text.matchAll(/\*\*([^*]+)\*\*/g)) {
+    prose.append(document.createTextNode(text.slice(offset, match.index)), element("strong", "", match[1]));
+    offset = match.index + match[0].length;
+  }
+  prose.appendChild(document.createTextNode(text.slice(offset)));
+  return prose;
+}
+function renderText(container, text, empty = "No analysis was returned.") {
+  container.replaceChildren(text ? analysisProse(text) : element("p", "insight-empty", empty));
+}
+function distinctSources(sources) {
+  const distinct = new Map();
+  for (const source of Array.isArray(sources) ? sources : []) {
+    if (!source || typeof source !== "object") continue;
+    const key = source.research_id != null ? `id:${source.research_id}` : source.source_stem ? `stem:${source.source_stem}` :
+      [source.title, source.authors, source.year, source.college].map(value => readable(value).toLowerCase()).join("|");
+    if (key === "|||") continue;
+    const previous = distinct.get(key);
+    const pages = [...new Set([...(previous?.pages || []), ...(Array.isArray(source.pages) ? source.pages : [])])];
+    distinct.set(key, { ...source, pages });
+  }
+  return [...distinct.values()];
+}
+function sourceLabel(source) {
+  const metadata = [source.title, source.authors, source.year, source.college].map(readable).filter(Boolean);
+  if (source.pages?.length) metadata.push(`pp. ${source.pages.join(", ")}`);
+  return metadata.join(" · ");
+}
+function appendSources(container, sources) {
+  const unique = distinctSources(sources);
+  if (!unique.length) return;
+  const details = element("details", "source-references");
+  details.appendChild(element("summary", "", "Retrieved source references"));
+  const list = element("ul");
+  unique.forEach(source => list.appendChild(element("li", "", sourceLabel(source))));
+  details.appendChild(list);
+  container.appendChild(details);
+}
 
-async function initPage() {
-  const navPromise = (async () => {
-    try {
-      const me = await apiMe();
-      applyNav(me.role);
-      const el = document.getElementById("avatarEl");
-      const rp = document.getElementById("rolePill");
-      if (el) el.textContent = (me.full_name || me.username).substring(0, 2).toUpperCase();
-      if (rp) rp.textContent = me.role.charAt(0).toUpperCase() + me.role.slice(1);
-    } catch {
-      applyNav("guest");
-    }
-    document.body.style.visibility = "visible";
-  })();
-
-  if (!docId) {
-    showError("No document ID specified.");
-    await navPromise;
+// Render all returned prose, including older structured cache entries. No heading parser.
+function renderSimilarity(container, data) {
+  renderText(container, resultText(data), 'No matching studies found.');
+  appendSources(container, data.sources);
+}
+function renderRelated(data, refined = false) {
+  const box = byId("relatedBox");
+  box.replaceChildren();
+  box.setAttribute("aria-busy", "false");
+  byId("relatedOrigin").textContent = refined
+    ? "Sources from the latest similarity refinement, in returned order. Up to five unique papers."
+    : "Sources from the opening similarity analysis, in returned order. Up to five unique papers.";
+  const sources = distinctSources((Array.isArray(data.sources) ? data.sources : [])
+    .filter(source => typeof source?.source_stem === "string" && source.source_stem.trim()));
+  if (!sources.length) {
+    box.appendChild(element("p", "insight-empty", "No related studies returned"));
     return;
   }
-
+  for (const source of sources.slice(0, 5)) {
+    const card = element("article", "related-card");
+    const heading = element("h3");
+    const link = element("a", "", readable(source.title) || "Untitled study");
+    link.href = `detail.html?id=${encodeURIComponent(source.source_stem)}`;
+    heading.appendChild(link);
+    card.append(heading, element("p", "insight-note", [readable(source.authors) || "Authors unavailable", readable(source.year) || "Year unavailable"].join(" · ")));
+    const abstract = readable(source.abstract);
+    if (abstract) {
+      card.appendChild(element("h4", "excerpt-label", "Abstract excerpt"));
+      card.appendChild(element("p", "analysis-text", abstract.length > 280 ? abstract.slice(0, 280).trimEnd() + "…" : abstract));
+    } else card.appendChild(element("p", "insight-empty", "Abstract unavailable"));
+    if (source.pages?.length) card.appendChild(element("p", "source-references", `Source pages: ${source.pages.join(", ")}`));
+    box.appendChild(card);
+  }
+}
+function relatedFailure(context, message) {
+  const box = byId("relatedBox");
+  box.setAttribute("aria-busy", "false");
+  const retry = element("button", "btn btn-ghost btn-sm", "Retry");
+  retry.type = "button";
+  retry.setAttribute("aria-label", "Retry Related Research");
+  retry.addEventListener("click", () => { if (isCurrent(context)) runSimilarity(); });
+  box.replaceChildren(element("p", "analysis-error", `Related research could not be loaded: ${message}`), retry);
+}
+function setLoading(container, label) {
+  const status = element("p", "insight-loading");
+  const spinner = element("span", "spinner");
+  spinner.setAttribute("aria-hidden", "true");
+  status.append(spinner, document.createTextNode(label));
+  container.replaceChildren(status);
+  container.setAttribute("aria-busy", "true");
+}
+function updateAnalysisStatus(context) {
+  const states = Object.values(context.jobs);
+  const running = states.includes("loading");
+  const failed = states.filter(state => state === "failed").length;
+  const badge = byId("analysisStatus");
+  badge.textContent = running ? "Running…" : failed === states.length ? "Unavailable" : failed ? "Partial" : "Complete";
+  badge.className = `badge ${running || failed ? "badge-pending" : "badge-validated"}`;
+}
+async function runAnalysis(target) {
+  if (!canUseAI || !activePaper?.id) return false;
+  const context = activePaper;
+  const relatedRevision = context.relatedRevision;
+  if (context.jobs[target] === "loading" || context.jobs[target] === "complete") return false;
+  const config = ANALYSIS[target];
+  const box = byId(config.box);
+  context.jobs[target] = "loading";
+  setLoading(box, config.loading);
+  if (target === "similarity" && !relatedRevision) setLoading(byId("relatedBox"), "Finding related studies…");
+  updateAnalysisStatus(context);
   try {
-    paperData  = await apiDocumentDetail(docId);
-    researchId = paperData.id;   // numeric id, resolved from source_stem
-    renderPaperInfo(paperData);
-  } catch (e) {
-    showError(`Could not load paper: ${e.message}`);
-    await navPromise;
-    return;
-  }
-
-  await navPromise;
-
-  /* Consent branch: full-PDF button vs IMRaD-only card. */
-  const permitFullPdf = applyConsentLayout(paperData);
-
-  ["simBars", "summaryBox", "gapsBox", "imradBox"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el && typeof bookLoaderHTML === "function") {
-      el.innerHTML = `<div style="display:flex;justify-content:center;padding:30px 0;">${bookLoaderHTML(48)}</div>`;
+    const key = `${context.id}:${target}`;
+    if (!pendingAnalyses.has(key)) {
+      pendingAnalyses.set(key, config.load(context.id).finally(() => pendingAnalyses.delete(key)));
     }
-  });
-
-  const analysisJobs = [runSimilarity(), runSummary(), runGaps()];
-  if (!permitFullPdf) analysisJobs.push(runImrad());
-
-  const outcomes = await Promise.all(analysisJobs);
-
-  /* Render citation badges from similarity sources */
-  renderCitationBadges();
-
-  /* Header badge reflects the mix of successful/failed analysis tabs:
-     all ok → Complete, some failed → Partial, all failed → Failed.
-     The load-error path keeps its own "Unavailable" badge (showError). */
-  const failed = outcomes.filter(ok => !ok).length;
-  const badge  = document.getElementById("analysisStatus");
-  if (badge) {
-    if (failed === 0) {
-      badge.textContent = "Complete";
-      badge.className   = "badge badge-validated";
-    } else if (failed === outcomes.length) {
-      badge.textContent = "Failed";
-      badge.className   = "badge badge-rejected";
-    } else {
-      badge.textContent = "Partial";
-      badge.className   = "badge badge-pending";
+    const data = await pendingAnalyses.get(key);
+    if (!isCurrent(context)) return false;
+    if (target === "similarity") {
+      renderSimilarity(box, data);
+      if (!relatedRevision && !context.relatedRevision) renderRelated(data);
+    }
+    else {
+      renderText(box, resultText(data));
+      appendSources(box, data.sources);
+    }
+    context.jobs[target] = "complete";
+    return true;
+  } catch (error) {
+    if (!isCurrent(context)) return false;
+    context.jobs[target] = "failed";
+    if (target === "similarity" && !relatedRevision && !context.relatedRevision) relatedFailure(context, error.message);
+    const failure = element("div", "analysis-error");
+    failure.appendChild(element("p", "", `${TARGET_LABELS[target]} could not be loaded: ${error.message}`));
+    const retry = element("button", "btn btn-ghost btn-sm", "Retry");
+    retry.type = "button";
+    retry.setAttribute("aria-label", `Retry ${TARGET_LABELS[target]}`);
+    retry.addEventListener("click", () => { if (isCurrent(context)) runAnalysis(target); });
+    failure.appendChild(retry);
+    box.replaceChildren(failure);
+    return false;
+  } finally {
+    if (isCurrent(context)) {
+      box.setAttribute("aria-busy", "false");
+      updateAnalysisStatus(context);
     }
   }
 }
+function runSimilarity() { return runAnalysis("similarity"); }
+function runSummary() { return runAnalysis("summary"); }
+function runGaps() { return runAnalysis("gap"); }
+function runImrad() { return runAnalysis("imrad"); }
 
-/* ── Paper info / error rendering ───────────────────────────────────────── */
-
-/**
- * Fills in the paper title, meta line, chips, and abstract from the
- * mapped research object returned by apiDocumentDetail().
- * @param {Object} p - mapped research object (see api.js _mapResearch)
- */
-function renderPaperInfo(p) {
-  const titleEl = document.getElementById("paperTitle");
-  if (titleEl) titleEl.textContent = p.title || p.source || "Untitled";
-
-  const metaEl = document.getElementById("paperMeta");
-  if (metaEl) {
-    const bits = [p.authors, p.department, p.year].filter(v => v && v !== "Unknown");
-    metaEl.textContent = bits.join(" · ") || "No metadata available.";
-  }
-
-  const chipsEl = document.getElementById("metaChips");
-  if (chipsEl) {
-    chipsEl.innerHTML = "";
-    const chipValues = [
-      { label: p.department, cls: "meta-chip" },
-      { label: p.year, cls: "meta-chip" },
-      { label: p.status, cls: `badge badge-${p.status}` },
-    ];
-    chipValues.forEach(({ label, cls }) => {
-      if (!label || label === "Unknown") return;
-      const chip = document.createElement("span");
-      chip.className   = cls;
-      chip.textContent = label;
-      chipsEl.appendChild(chip);
-    });
-  }
-
-  const abstractEl = document.getElementById("abstractText");
-  if (abstractEl) abstractEl.textContent = p.abstract || "No abstract provided.";
+function appendMessage(label, text, user = false) {
+  const message = element("article", `insight-message${user ? " user-message" : ""}`);
+  message.appendChild(element("div", "message-label", label));
+  const body = element("div");
+  renderText(body, text);
+  message.appendChild(body);
+  byId("refinementThread").appendChild(message);
+  return { message, body };
 }
-
-/* ── Consent-gated layout ────────────────────────────────────────────── */
-
-/**
- * Shows exactly one of the two consent-dependent slots:
- *   - #pdfViewerTrigger ("Read Full Version") when public_pdf_consent
- *   - #imradViewerCard (IMRaD summary) when the author withheld consent
- * Returns true when the full-PDF affordance is shown.
- * @param {Object} p - mapped research object
- */
-function applyConsentLayout(p) {
-  const permitFullPdf = !!p.public_pdf_consent;
-
-  const trigger = document.getElementById("pdfViewerTrigger");
-  if (trigger) trigger.style.display = permitFullPdf ? "block" : "none";
-
-  const imradCard = document.getElementById("imradViewerCard");
-  if (imradCard) imradCard.style.display = permitFullPdf ? "none" : "block";
-
-  return permitFullPdf;
+async function refineAnalysis(event) {
+  event?.preventDefault();
+  if (!canUseAI || !activePaper?.id || activePaper.refining) return false;
+  const context = activePaper;
+  const input = byId("refineInput");
+  const query = input.value.trim();
+  if (!query) { input.focus(); return false; }
+  // Auto previously resolved to the active tab (similarity by default).
+  // All sections are now visible; keep that default explicit in the selector.
+  const selected = byId("refineTarget").value;
+  const target = selected === "auto" ? "similarity" : selected;
+  if (!TARGET_LABELS[target]) return false;
+  context.refining = true;
+  const button = byId("refineBtn");
+  button.disabled = true;
+  button.textContent = "Refining…";
+  input.readOnly = true;
+  byId("refineTarget").disabled = true;
+  byId("refineStatus").textContent = "Refining the selected analysis…";
+  appendMessage("You", query, true);
+  const response = appendMessage(`iPeek · ${TARGET_LABELS[target]}`, "Working on your refinement…");
+  response.message.setAttribute("aria-busy", "true");
+  byId("insightsScroll").scrollTop = byId("insightsScroll").scrollHeight;
+  try {
+    const data = await apiRefineAnalysis(context.id, query, target);
+    if (!isCurrent(context)) return false;
+    if (target === "similarity") {
+      renderSimilarity(response.body, data);
+      context.relatedRevision++;
+      renderRelated(data, true);
+    }
+    else { renderText(response.body, resultText(data)); appendSources(response.body, data.sources); }
+    input.value = "";
+    byId("refineStatus").textContent = "Refinement added below the opening analysis.";
+    return true;
+  } catch (error) {
+    if (!isCurrent(context)) return false;
+    renderText(response.body, `Refinement failed: ${error.message}`);
+    byId("refineStatus").textContent = "Your prompt is preserved. Select Refine to try again.";
+    return false;
+  } finally {
+    if (isCurrent(context)) {
+      context.refining = false;
+      response.message.setAttribute("aria-busy", "false");
+      button.disabled = false;
+      button.textContent = "Refine";
+      input.readOnly = false;
+      byId("refineTarget").disabled = false;
+    }
+  }
 }
-
-/** Opens the author-approved full PDF in a new tab (backend re-checks
- * public_pdf_consent on GET /repository/{source_stem}/pdf). */
+function renderPaperInfo(paper) {
+  byId("paperTitle").textContent = paper.title || paper.source || "Untitled";
+  byId("paperMeta").textContent = readable(paper.authors) || "Authors not provided.";
+  byId("metaChips").replaceChildren();
+  [paper.department, paper.year, paper.status].map(readable).filter(Boolean).forEach(label => byId("metaChips").appendChild(element("span", "meta-chip", label)));
+  byId("abstractText").textContent = paper.abstract || "No abstract provided.";
+}
 function readFullVersion() {
-  if (!paperData || !paperData.source) {
-    toast("Paper not loaded yet.", "error");
-    return;
-  }
+  if (!paperData?.public_pdf_consent || !paperData.source) return;
   viewPdfInNewTab(apiPdfUrl(paperData.source));
 }
-
-/**
- * Shows an error state in place of the paper title/abstract, and stops
- * the AI panels from spinning forever.
- * @param {string} msg
- */
-function showError(msg) {
-  const titleEl = document.getElementById("paperTitle");
-  if (titleEl) titleEl.textContent = "Unable to load research";
-
-  const metaEl = document.getElementById("paperMeta");
-  if (metaEl) metaEl.textContent = "";
-
-  const abstractEl = document.getElementById("abstractText");
-  if (abstractEl) abstractEl.textContent = msg;
-
-  ["simBars", "summaryBox", "gapsBox", "imradBox"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = "";
-  });
-
-  const badge = document.getElementById("analysisStatus");
-  if (badge) {
-    badge.textContent = "Unavailable";
-    badge.className   = "badge badge-rejected";
-  }
-
-  toast(msg, "error");
-}
-
-/* ── Tabs ────────────────────────────────────────────────────────────────── */
-
-const TAB_PANELS = {
-  similarity: "tabSimilarity",
-  summary:    "tabSummary",
-  gaps:       "tabGaps",
-};
-
-/**
- * Returns the currently active tab key from the tab buttons.
- */
-function getActiveTab() {
-  const active = document.querySelector(".tab-btn.active");
-  if (!active) return "similarity";
-  const text = active.textContent.toLowerCase();
-  if (text.includes("similarity")) return "similarity";
-  if (text.includes("summary"))    return "summary";
-  if (text.includes("gap"))        return "gaps";
-  return "similarity";
-}
-
-/**
- * Switches the active AI-analysis tab.
- * @param {string} tab - one of "similarity" | "summary" | "gaps"
- * @param {HTMLElement} el - the tab button that was clicked
- */
-function switchTab(tab, el) {
-  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-  el.classList.add("active");
-
-  Object.values(TAB_PANELS).forEach(panelId => {
-    const panel = document.getElementById(panelId);
-    if (panel) panel.style.display = "none";
-  });
-
-  const target = document.getElementById(TAB_PANELS[tab]);
-  if (target) target.style.display = "block";
-}
-
-/* ── Refine analysis ─────────────────────────────────────────────────────── */
-
-async function refineAnalysis() {
-  const input = document.getElementById("refineInput");
-  const btn   = document.getElementById("refineBtn");
-  const query = input ? input.value.trim() : "";
-  if (!query) {
-    toast("Please enter a query to refine the analysis.", "warning");
-    return;
-  }
-  if (!researchId) {
-    toast("Paper not loaded yet.", "error");
-    return;
-  }
-
-  /* Determine target: use dropdown or fall back to active tab */
-  const select = document.getElementById("refineTarget");
-  let target = select ? select.value : "auto";
-  if (target === "auto") target = getActiveTab();
-  /* Map tab key to backend target */
-  if (target === "gaps") target = "gap";
-
-  /* Show running state */
-  const badge = document.getElementById("analysisStatus");
-  if (badge) {
-    badge.textContent = "Running...";
-    badge.className   = "badge badge-pending";
-  }
-
-  btn.disabled    = true;
-  btn.textContent = "Refining...";
-
-  try {
-    const data = await apiRefineAnalysis(researchId, query, target);
-
-    /* Update the relevant tab content */
-    if (target === "similarity") {
-      renderSimilarityBars(data.result);
-      lastSimilaritySources = data.sources || [];
-      renderCitationBadges();
-    } else if (target === "summary") {
-      const box = document.getElementById("summaryBox");
-      if (box) box.textContent = data.result.replace(/\*\*/g, "");
-    } else if (target === "gap") {
-      renderGapsList(data.result);
-    } else if (target === "imrad") {
-      renderImrad(data.result);
-    }
-
-    /* Switch to the refined tab if not already active */
-    const tabKey = target === "gap" ? "gaps" : target;
-    const tabBtn = document.querySelector(`.tab-btn[onclick*="${tabKey}"]`);
-    if (tabBtn && !tabBtn.classList.contains("active")) {
-      switchTab(tabKey, tabBtn);
-    }
-
-    input.value = "";
-    toast("Analysis refined.", "success");
-  } catch (e) {
-    toast(`Refine failed: ${e.message}`, "error");
-  } finally {
-    btn.disabled    = false;
-    btn.textContent = "Refine";
-    if (badge) {
-      badge.textContent = "Complete";
-      badge.className   = "badge badge-validated";
-    }
+function syncReaderViews() {
+  const mobile = window.matchMedia("(max-width: 768px)").matches;
+  document.querySelector(".reader-tabs").hidden = !mobile;
+  for (const view of ["paper", "insights"]) {
+    const active = readerView === view;
+    const tab = byId(`${view}Tab`);
+    const panel = byId(`${view}Panel`);
+    tab.setAttribute("aria-selected", String(active));
+    tab.tabIndex = active ? 0 : -1;
+    panel.hidden = mobile && !active;
+    if (mobile) { panel.setAttribute("role", "tabpanel"); panel.setAttribute("aria-labelledby", tab.id); panel.tabIndex = 0; }
+    else { panel.removeAttribute("role"); panel.removeAttribute("tabindex"); panel.setAttribute("aria-labelledby", view === "paper" ? "paperTitle" : "insightsHeading"); }
   }
 }
-
-/* ── AI Analysis — now called with researchId, not a query string ─────── */
-
-let lastSimilaritySources = [];
-
-async function runSimilarity() {
-  try {
-    const data = await apiSimilarity(researchId);
-    renderSimilarityBars(data.result);
-    lastSimilaritySources = data.sources || [];
-    return true;
-  } catch (e) {
-    const el = document.getElementById("simBars");
-    if (el) {
-      el.textContent = "";
-      const msg = document.createElement("div");
-      msg.className   = "tab-error";
-      msg.textContent = `⚠️ Similarity failed: ${e.message}`;
-      el.appendChild(msg);
-    }
-    lastSimilaritySources = [];
-    return false;
-  }
-}
-
-async function runSummary() {
-  const box = document.getElementById("summaryBox");
-  try {
-    const data = await apiSummary(researchId);
-    const clean = data.result.replace(/\*\*/g, "");
-    if (!clean.trim()) {
-      if (box) {
-        box.textContent = "";
-        const msg = document.createElement("span");
-        msg.className   = "tab-error";
-        msg.textContent = "No summary data available.";
-        box.appendChild(msg);
-      }
-      return true;
-    }
-    if (box && typeof typeWriter === "function") {
-      typeWriter(box, clean);
-    } else if (box) {
-      box.textContent = clean;
-    }
-    return true;
-  } catch (e) {
-    if (box) {
-      box.textContent = "";
-      const msg = document.createElement("span");
-      msg.className   = "tab-error";
-      msg.textContent = `⚠️ Summary failed: ${e.message}`;
-      box.appendChild(msg);
-    }
-    return false;
-  }
-}
-
-async function runGaps() {
-  const box = document.getElementById("gapsBox");
-  try {
-    const data = await apiGaps(researchId);
-    renderGapsList(data.result);
-    return true;
-  } catch (e) {
-    if (box) {
-      box.textContent = "";
-      const msg = document.createElement("span");
-      msg.className   = "tab-error";
-      msg.textContent = `⚠️ Gap analysis failed: ${e.message}`;
-      box.appendChild(msg);
-    }
-    return false;
-  }
-}
-
-async function runImrad() {
-  const box = document.getElementById("imradBox");
-  try {
-    const data = await apiImrad(researchId);
-    renderImrad(data.result);
-    return true;
-  } catch (e) {
-    if (box) {
-      box.textContent = "";
-      const msg = document.createElement("span");
-      msg.className   = "tab-error";
-      msg.textContent = `⚠️ IMRaD summary failed: ${e.message}`;
-      box.appendChild(msg);
-    }
-    return false;
-  }
-}
-
-/* ── Similarity rendering ───────────────────────────────────────────────── */
-
-const SIM_LEVEL_WIDTH = { HIGH: 90, MODERATE: 60, LOW: 30 };
-const SIM_LEVEL_COLOR = {
-  HIGH: "var(--success, #16a34a)",
-  MODERATE: "var(--warning, #d97706)",
-  LOW: "var(--muted, #9ca3af)",
-};
-
-/**
- * The Groq LLM returns free text (not JSON) for the similarity report,
- * roughly one block per matched study ending in "Similarity: HIGH/
- * MODERATE/LOW". This parses those blocks into bar data. If nothing
- * matches that shape (LLM phrased it differently), falls back to
- * showing the raw text so the tab is never left blank.
- *
- * @param {string} text - raw LLM output from apiSimilarity().result
- */
-function renderSimilarityBars(text) {
-  const container = document.getElementById("simBars");
-  if (!container) return;
-  container.innerHTML = "";
-
-  if (!text || !text.trim()) {
-    const empty = document.createElement("div");
-    empty.className   = "tab-error";
-    empty.textContent = "No similarity data available.";
-    container.appendChild(empty);
-    return;
-  }
-
-  const blocks = text
-    .split(/\n(?=\s*\d+[\.\)]\s|\s*\*\*)/)
-    .map(b => b.trim())
-    .filter(Boolean);
-
-  const items = [];
-  blocks.forEach(block => {
-    const levelMatch = block.match(/Similarity:\s*(HIGH|MODERATE|LOW)/i);
-    if (!levelMatch) return;
-    const level = levelMatch[1].toUpperCase();
-    const firstLine = block
-      .split("\n")[0]
-      .replace(/^\s*\d+[\.\)]\s*/, "")
-      .replace(/\*\*/g, "")
-      .trim();
-    const detail = block.replace(/Similarity:\s*(HIGH|MODERATE|LOW)/i, "").trim();
-    items.push({ label: firstLine || "Study", level, detail });
-  });
-
-  if (items.length === 0) {
-    // LLM didn't follow the expected format — show the raw text instead
-    // of an empty tab.
-    const pre = document.createElement("div");
-    pre.style.cssText = "white-space:pre-wrap;font-size:0.84rem;line-height:1.6;";
-    pre.textContent = text.replace(/\*\*/g, "");
-    container.appendChild(pre);
-    return;
-  }
-
-  items.forEach(item => {
-    const row = document.createElement("div");
-    row.style.cssText = "margin-bottom:16px;";
-
-    const labelRow = document.createElement("div");
-    labelRow.style.cssText = "display:flex;justify-content:space-between;font-size:0.84rem;font-weight:600;margin-bottom:6px;";
-
-    const labelEl = document.createElement("span");
-    labelEl.textContent = item.label;
-
-    const levelEl = document.createElement("span");
-    levelEl.style.color = SIM_LEVEL_COLOR[item.level] || "var(--muted)";
-    levelEl.textContent = item.level;
-
-    labelRow.appendChild(labelEl);
-    labelRow.appendChild(levelEl);
-
-    const track = document.createElement("div");
-    track.style.cssText = "background:var(--bg,#f0f0f0);border-radius:6px;height:8px;overflow:hidden;";
-
-    const fill = document.createElement("div");
-    fill.style.cssText = `height:100%;border-radius:6px;width:${SIM_LEVEL_WIDTH[item.level] || 50}%;background:${SIM_LEVEL_COLOR[item.level] || "var(--muted)"};`;
-
-    track.appendChild(fill);
-
-    const detailEl = document.createElement("div");
-    detailEl.style.cssText = "font-size:0.78rem;color:var(--muted);margin-top:6px;line-height:1.5;";
-    detailEl.textContent = item.detail;
-
-    row.appendChild(labelRow);
-    row.appendChild(track);
-    row.appendChild(detailEl);
-    container.appendChild(row);
-  });
-}
-
-/**
- * Renders citation badges from the similarity sources list.
- * These appear below the similarity bars in the Similarity Report tab.
- */
-function renderCitationBadges() {
-  const container = document.getElementById("citationBadges");
-  if (!container) return;
-  container.innerHTML = "";
-
-  if (!lastSimilaritySources || lastSimilaritySources.length === 0) return;
-
-  lastSimilaritySources.forEach(s => {
-    const badge = document.createElement("span");
-    badge.className = "citation-badge citation-pop";
-    const bits = [s.title, s.year].filter(v => v && v !== "Unknown");
-    badge.textContent = bits.join(", ") || "Untitled";
-    container.appendChild(badge);
-  });
-}
-
-/* ── Gaps rendering ──────────────────────────────────────────────────────── */
-
-const GAP_URGENCY_COLOR = {
-  HIGH: "var(--danger, #dc2626)",
-  MEDIUM: "var(--warning, #d97706)",
-  LOW: "var(--muted, #9ca3af)",
-};
-
-/**
- * Parses the LLM's free-text gap analysis (Gap/Recommendation/Urgency
- * triples) into cards. Falls back to raw text if the LLM didn't follow
- * the expected shape, so the tab is never left blank.
- * @param {string} text - raw LLM output from apiGaps().result
- */
-function renderGapsList(text) {
-  const container = document.getElementById("gapsBox");
-  if (!container) return;
-  container.innerHTML = "";
-
-  if (!text || !text.trim()) {
-    const empty = document.createElement("div");
-    empty.className   = "tab-error";
-    empty.textContent = "No research gap data available.";
-    container.appendChild(empty);
-    return;
-  }
-
-  const gapRegex = /Gap:\s*(.+?)\s*(?:\n|\r)+.*?Recommendation:\s*(.+?)\s*(?:\n|\r)+.*?Urgency:\s*(HIGH|MEDIUM|LOW)/gis;
-  const items = [];
-  let match;
-  while ((match = gapRegex.exec(text)) !== null) {
-    items.push({
-      gap: match[1].replace(/\*\*/g, "").trim(),
-      recommendation: match[2].replace(/\*\*/g, "").trim(),
-      urgency: match[3].toUpperCase(),
+function bindReaderEvents() {
+  if (readerEventsBound) return;
+  readerEventsBound = true;
+  const views = ["paper", "insights"];
+  for (const view of views) {
+    byId(`${view}Tab`).addEventListener("click", () => { readerView = view; syncReaderViews(); });
+    byId(`${view}Tab`).addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      readerView = event.key === "Home" ? views[0] : event.key === "End" ? views.at(-1) : views[(views.indexOf(view) + (event.key === "ArrowRight" ? 1 : views.length - 1)) % views.length];
+      syncReaderViews(); byId(`${readerView}Tab`).focus();
     });
   }
-
-  if (items.length === 0) {
-    const pre = document.createElement("div");
-    pre.style.cssText = "white-space:pre-wrap;font-size:0.84rem;line-height:1.6;";
-    pre.textContent = text.replace(/\*\*/g, "");
-    container.appendChild(pre);
+  window.matchMedia("(max-width: 768px)").addEventListener("change", syncReaderViews);
+  byId("refineForm").addEventListener("submit", refineAnalysis);
+  byId("readPdfBtn").addEventListener("click", readFullVersion);
+}
+async function initPage() {
+  bindReaderEvents();
+  const context = { source: currentSource(), id: null, jobs: {}, refining: false, relatedRevision: 0 };
+  activePaper = context;
+  canUseAI = false; paperData = null; researchId = null;
+  readerView = "paper";
+  syncReaderViews();
+  byId("refinementThread").replaceChildren();
+  byId("refineForm").reset();
+  byId("refineForm").hidden = true;
+  byId("refineInput").readOnly = false;
+  byId("refineTarget").disabled = false;
+  byId("refineBtn").disabled = false;
+  byId("refineBtn").textContent = "Refine";
+  byId("refineStatus").textContent = "";
+  for (const id of ["pdfViewerTrigger", "imradViewerCard", "consentNotice", "aiAccessNotice"]) byId(id).hidden = true;
+  byId("insightsScroll").hidden = false;
+  byId("analysisStatus").textContent = "Loading…";
+  byId("relatedOrigin").textContent = "Sources from the opening similarity analysis, in returned order. Up to five unique papers.";
+  setLoading(byId("relatedBox"), "Finding related studies…");
+  renderPaperInfo({ title: "Loading research…", abstract: "Loading…" });
+  for (const config of Object.values(ANALYSIS)) setLoading(byId(config.box), config.loading);
+  const auth = apiMe().catch(() => null);
+  const paper = context.source ? apiDocumentDetail(context.source) : Promise.reject(new Error("No document ID specified."));
+  const [identity, documentResult] = await Promise.allSettled([auth, paper]);
+  if (!isCurrent(context)) return;
+  const me = identity.value;
+  if (!me) { window.location.replace("index.html"); return; }
+  canUseAI = !!me && ["student", "librarian"].includes(me.role);
+  if (!document.getElementById("grid")) applyNav(me?.role || "guest");
+  if (me) {
+    const avatar = byId("avatarEl");
+    const role = byId("rolePill");
+    if (avatar) avatar.textContent = (me.full_name || me.username || "User").substring(0, 2).toUpperCase();
+    if (role) role.textContent = me.role.charAt(0).toUpperCase() + me.role.slice(1);
+  }
+  document.body.style.visibility = "visible";
+  if (documentResult.status === "rejected") {
+    renderPaperInfo({ title: "Unable to load research", abstract: documentResult.reason.message });
+    byId("insightsScroll").hidden = true;
+    byId("aiAccessNotice").hidden = false;
+    byId("aiAccessNotice").textContent = "Research Insights is unavailable because the paper could not be loaded.";
+    byId("analysisStatus").textContent = "Unavailable";
+    renderText(byId("relatedBox"), "Related Research is unavailable because the paper could not be loaded.");
+    byId("relatedBox").setAttribute("aria-busy", "false");
     return;
   }
-
-  items.forEach(item => {
-    const card = document.createElement("div");
-    card.style.cssText = "border:1px solid var(--border,#eee);border-radius:8px;padding:12px 14px;margin-bottom:10px;";
-
-    const header = document.createElement("div");
-    header.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px;";
-
-    const gapText = document.createElement("div");
-    gapText.style.cssText = "font-weight:600;font-size:0.84rem;line-height:1.4;";
-    gapText.textContent = item.gap;
-
-    const urgencyBadge = document.createElement("span");
-    urgencyBadge.style.cssText = `flex-shrink:0;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;color:#fff;background:${GAP_URGENCY_COLOR[item.urgency] || "var(--muted)"};`;
-    urgencyBadge.textContent = item.urgency;
-
-    header.appendChild(gapText);
-    header.appendChild(urgencyBadge);
-
-    const rec = document.createElement("div");
-    rec.style.cssText = "font-size:0.8rem;color:var(--muted);line-height:1.5;";
-    rec.textContent = item.recommendation;
-
-    card.appendChild(header);
-    card.appendChild(rec);
-    container.appendChild(card);
-  });
+  paperData = documentResult.value;
+  context.id = researchId = paperData.id;
+  renderPaperInfo(paperData);
+  const consent = !!paperData.public_pdf_consent;
+  byId("pdfViewerTrigger").hidden = !consent;
+  byId("consentNotice").hidden = consent || canUseAI;
+  if (!canUseAI) {
+    byId("insightsScroll").hidden = true;
+    byId("aiAccessNotice").hidden = false;
+    byId("aiAccessNotice").textContent = "Research Insights is available to students and library staff. You can read the paper's abstract and any PDF the author permits you to view.";
+    byId("analysisStatus").textContent = "Reading only";
+    renderText(byId("relatedBox"), "Related Research is available to students and library staff.");
+    byId("relatedBox").setAttribute("aria-busy", "false");
+    return;
+  }
+  byId("refineForm").hidden = false;
+  byId("imradViewerCard").hidden = consent;
+  await Promise.all([runSummary(), runSimilarity(), runGaps(), ...(!consent ? [runImrad()] : [])]);
 }
 
-/* ── IMRaD rendering ─────────────────────────────────────────────────────── */
-
-const IMRAD_SECTIONS = ["Introduction", "Methods", "Results", "Discussion"];
-
-/**
- * Parses the LLM's IMRaD output into four labeled sections. The prompt
- * (rag.py IMRAD_PROMPT) mandates exact "**Section:**" headers; if the
- * model deviates and not all four headers are found, falls back to the
- * raw text — same never-blank fallback as renderGapsList/renderSimilarityBars.
- * @param {string} text - raw LLM output from apiImrad().result
- */
-function renderImrad(text) {
-  const container = document.getElementById("imradBox");
-  if (!container) return;
-  container.innerHTML = "";
-
-  if (!text || !text.trim()) {
-    const empty = document.createElement("div");
-    empty.className   = "tab-error";
-    empty.textContent = "No IMRaD summary available.";
-    container.appendChild(empty);
-    return;
-  }
-
-  /* Locate each section header (bold-with-colon variants, then plain line-start) */
-  const headers = IMRAD_SECTIONS.map(label => {
-    const variants = [`**${label}:**`, `**${label}**:`];
-    for (const v of variants) {
-      const idx = text.indexOf(v);
-      if (idx !== -1) return { label, start: idx, contentStart: idx + v.length };
-    }
-    const re = new RegExp(`(?:^|\\n)[ \\t]*${label}[ \\t]*:`, "i");
-    const m = re.exec(text);
-    if (m) return { label, start: m.index, contentStart: m.index + m[0].length };
-    return null;
-  });
-
-  if (headers.some(h => h === null)) {
-    // LLM didn't follow the expected format — show raw text instead
-    const pre = document.createElement("div");
-    pre.style.cssText = "white-space:pre-wrap;font-size:0.84rem;line-height:1.6;";
-    pre.textContent = text.replace(/\*\*/g, "");
-    container.appendChild(pre);
-    return;
-  }
-
-  headers.forEach((header, i) => {
-    const bodyStart = header.contentStart;
-    const bodyEnd   = i + 1 < headers.length ? headers[i + 1].start : text.length;
-    const body      = text.slice(bodyStart, bodyEnd).replace(/\*\*/g, "").trim();
-
-    const section = document.createElement("div");
-    section.style.cssText = "margin-bottom:14px;";
-
-    const h = document.createElement("div");
-    h.style.cssText = "font-weight:700;font-size:0.88rem;margin-bottom:4px;";
-    h.textContent = header.label;
-
-    const p = document.createElement("div");
-    p.style.cssText = "font-size:0.84rem;line-height:1.65;";
-    p.textContent = body || "—";
-
-    section.appendChild(h);
-    section.appendChild(p);
-    container.appendChild(section);
-  });
-}
-
-/* ── Initialize ──────────────────────────────────────────────────────────── */
-initPage();
+window.iPeekDetail = {
+  open: initPage,
+  close() { activePaper = null; canUseAI = false; },
+};
+})();

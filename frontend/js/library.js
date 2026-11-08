@@ -107,23 +107,24 @@ function render() {
   if (empty) empty.style.display = "none";
 
   docs.forEach(d => {
-    const card = document.createElement("div");
-    card.className = "r-card";
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "r-card is-clickable";
     card.addEventListener("click", () => openViewer(d.source, d.title));
 
-    const idEl = document.createElement("div");
+    const idEl = document.createElement("span");
     idEl.className   = "r-card-id";
     idEl.textContent = `${safeStr(d.college) || "—"} · ${safeStr(d.year) || "—"}`;
 
-    const titleEl = document.createElement("div");
+    const titleEl = document.createElement("span");
     titleEl.className   = "r-card-title";
     titleEl.textContent = safeStr(d.title) || d.source || "Untitled";
 
-    const metaEl = document.createElement("div");
+    const metaEl = document.createElement("span");
     metaEl.className   = "r-card-meta";
     metaEl.textContent = safeStr(d.authors) || "Authors unknown";
 
-    const tagsEl = document.createElement("div");
+    const tagsEl = document.createElement("span");
     tagsEl.className = "r-card-tags";
     const kwStr = safeStr(d.keywords);
     if (kwStr) {
@@ -183,7 +184,9 @@ window.addEventListener("pageshow", (e) => {
 
 /* ── PDF viewer — relocated from detail.js ───────────────────────────────── */
 
+let viewerTrigger = null;
 function openViewer(source, title) {
+  viewerTrigger = document.activeElement;
   currentSource = source;
 
   const titleEl = document.getElementById("viewerTitle");
@@ -191,20 +194,22 @@ function openViewer(source, title) {
   const titleOv = document.getElementById("viewerTitleOv");
   if (titleOv) titleOv.textContent = title || source;
 
+  pdfDoc = null;
+  pdfPage = 1;
+  updatePageInfo();
   const isMobile = window.innerWidth <= 768;
   if (isMobile) {
     const overlay = document.getElementById("pdfOverlay");
-    if (overlay) overlay.classList.add("open");
+    if (overlay) { overlay.classList.add("open"); uiDialog.open("pdfOverlay", closePdfOverlay); }
   } else {
     const card = document.getElementById("pdfViewerCard");
     if (!card) return;
     card.style.display = "block";
+    card.querySelector("button[onclick=\"hidePdfViewer()\"]").focus();
     card.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   pdfVisible = true;
-  pdfDoc = null;   // a different paper may have been viewed before
-  pdfPage = 1;
   loadPdf();
 }
 
@@ -215,7 +220,7 @@ async function loadPdf() {
   if (canvas)  canvas.style.display  = "block";
 
   try {
-    const url = apiPdfUrl(currentSource);
+
 
     if (typeof pdfjsLib === "undefined") {
       throw new Error("PDF.js not loaded. Check the CDN script tag in library.html.");
@@ -225,7 +230,7 @@ async function loadPdf() {
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
     // httpHeaders carries the JWT bearer token
-    pdfDoc = await pdfjsLib.getDocument({ url, httpHeaders: apiAuthHeaderForPdf() }).promise;
+    pdfDoc = await pdfjsLib.getDocument({ data: await apiPdfData(currentSource) }).promise;
     updatePageInfo();
     await renderPdfPage(1);
 
@@ -290,7 +295,7 @@ function pdfNextPage() {
 
 function closePdfOverlay() {
   const overlay = document.getElementById("pdfOverlay");
-  if (overlay) overlay.classList.remove("open");
+  if (overlay) { overlay.classList.remove("open"); uiDialog.close("pdfOverlay"); }
 }
 
 function hidePdfViewer() {
@@ -301,9 +306,14 @@ function hidePdfViewer() {
   } else {
     const card = document.getElementById("pdfViewerCard");
     if (card) card.style.display = "none";
+    if (viewerTrigger?.isConnected) viewerTrigger.focus({preventScroll:true});
   }
   pdfVisible = false;
 }
 
 /* ── Initialize ──────────────────────────────────────────────────────────── */
 initPage();
+
+document.getElementById("pdfViewerCard").addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); hidePdfViewer(); }
+});

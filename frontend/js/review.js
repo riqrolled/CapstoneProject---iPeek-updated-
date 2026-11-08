@@ -36,6 +36,14 @@ async function initPage() {
     window.location.replace("index.html"); return;
   }
   await loadSubmissions();
+  const params = new URLSearchParams(location.search);
+  const status = params.get("status");
+  if (["all", "pending", "returned"].includes(status)) {
+    const button = document.querySelector(`.filter-tab[data-status="${status}"]`);
+    if (button) filterList(status, button);
+  }
+  const requestedId = Number(params.get("id"));
+  if (requestedId && submissions.some(paper => paper.id === requestedId)) selectSubmission(requestedId);
 }
 
 initPage();
@@ -90,8 +98,9 @@ function renderList() {
       item.appendChild(cb);
     }
 
-    const content = document.createElement("div");
-    content.style.flex = "1";
+    const content = document.createElement("button");
+    content.type = "button";
+    content.className = "sub-item-open";
     content.addEventListener("click", () => selectSubmission(s.id));
 
     const title = document.createElement("div");
@@ -151,7 +160,9 @@ function clearSelection() {
   renderList();
 }
 
+let bulkDeleteBusy = false;
 async function confirmBulkDelete() {
+  if (bulkDeleteBusy) return;
   const ids = Array.from(selectedIds);
   if (ids.length === 0) return;
 
@@ -162,17 +173,21 @@ async function confirmBulkDelete() {
   );
   if (!ok) return;
 
-  const results = await Promise.allSettled(ids.map(id => apiDeletePaper(id)));
-  const failedCount    = results.filter(r => r.status === "rejected").length;
-  const succeededCount = ids.length - failedCount;
-
-  if (succeededCount > 0) toast(`${succeededCount} paper${succeededCount !== 1 ? "s" : ""} deleted.`, "success");
-  if (failedCount > 0) toast(`${failedCount} deletion${failedCount !== 1 ? "s" : ""} failed.`, "error");
+  bulkDeleteBusy = true;
+  const buttons = document.querySelectorAll('[onclick="confirmBulkDelete()"]');
+  buttons.forEach(button => button.disabled = true);
+  let result;
+  try { result = await apiBulkDeletePapers(ids); }
+  catch (error) { toast(error.message, "error"); await loadSubmissions(); return; }
+  finally { bulkDeleteBusy = false; buttons.forEach(button => button.disabled = false); }
+  if (result.deleted.length) toast(`${result.deleted.length} papers deleted.`, "success");
+  if (result.failed.length) toast(`${result.failed.length} papers could not be deleted.`, "error");
 
   selectedIds.clear();
+  result.failed.forEach(id => selectedIds.add(id));
   currentId = null;
   document.getElementById("detailPanel").innerHTML =
-    "<div class='empty-detail'><div class='icon'>📋</div><p class='empty-detail-title'>No submission selected</p><p class='empty-detail-sub'>Click a submission on the left to review it.</p></div>";
+    `<div class='empty-detail'><div class='icon'>${uiIconMarkup("my-submissions")}</div><p class='empty-detail-title'>No submission selected</p><p class='empty-detail-sub'>Click a submission on the left to review it.</p></div>`;
 
   await loadSubmissions();
   updateBulkBar();
@@ -185,11 +200,14 @@ function selectSubmission(id) {
   renderList();
 
   const panel = document.getElementById("detailPanel");
+  document.querySelector(".sub-item.active .sub-item-open")?.focus({preventScroll: true});
   const sheetContent = document.getElementById("reviewSheetContent");
   const isMobile = window.innerWidth <= 768;
 
   const target = isMobile ? sheetContent : panel;
-  if (!isMobile) panel.innerHTML = "";
+  panel.replaceChildren();
+  sheetContent.replaceChildren();
+  document.getElementById("reviewDetailSheet").scrollTop = 0;
 
   const titleEl = document.createElement("div");
   titleEl.className   = "detail-title";
@@ -237,8 +255,9 @@ function selectSubmission(id) {
   fbCard.className = "card";
   fbCard.style.marginBottom = "14px";
 
-  const fbLabel = document.createElement("div");
-  fbLabel.className   = "section-label";
+  const fbLabel = document.createElement("label");
+  fbLabel.className   = "form-label";
+  fbLabel.htmlFor = "feedbackInput";
   fbLabel.textContent = "Librarian Feedback";
 
   const fbTextarea = document.createElement("textarea");
@@ -247,9 +266,21 @@ function selectSubmission(id) {
   fbTextarea.rows        = 3;
   fbTextarea.placeholder = "Enter feedback or reason for returning...";
   fbTextarea.textContent = s.feedback || "";
+  fbTextarea.setAttribute("aria-describedby", "feedbackHelp reviewStatus");
+
+  const fbHelp = document.createElement("p");
+  fbHelp.id = "feedbackHelp";
+  fbHelp.className = "form-help";
+  fbHelp.textContent = "Feedback is required when returning a paper.";
+  const status = document.createElement("p");
+  status.id = "reviewStatus";
+  status.className = "form-status";
+  status.setAttribute("role", "status");
 
   fbCard.appendChild(fbLabel);
   fbCard.appendChild(fbTextarea);
+  fbCard.appendChild(fbHelp);
+  fbCard.appendChild(status);
 
   const actionRow = document.createElement("div");
   actionRow.className = "action-row";
@@ -267,21 +298,21 @@ function selectSubmission(id) {
   actionRow.appendChild(viewPdfBtn);
 
   if (currentUserRole === "librarian") {
-    const deleteBtn = document.createElement("button");
-    deleteBtn.className   = "btn btn-danger";
-    deleteBtn.textContent = "Delete";
+    const deleteBtn = createActionIconButton("trash", "Delete", `Delete ${s.title}`);
     deleteBtn.addEventListener("click", () => deletePaperFromDetail(s.id, s.title));
     actionRow.appendChild(deleteBtn);
   }
 
   const returnBtn = document.createElement("button");
   returnBtn.className   = "btn btn-ghost";
+  returnBtn.id = "returnReviewBtn";
   returnBtn.textContent = "Return";
   returnBtn.addEventListener("click", () => returnSubmission(s.id));
 
   const validateBtn = document.createElement("button");
-  validateBtn.className   = "btn btn-success";
-  validateBtn.textContent = "Validate";
+  validateBtn.className   = "btn btn-primary";
+  validateBtn.id = "approveReviewBtn";
+  validateBtn.textContent = "Approve";
   validateBtn.addEventListener("click", () => validateSubmission(s.id));
 
   actionRow.appendChild(returnBtn);
@@ -304,8 +335,9 @@ function selectSubmission(id) {
 /* ── Actions — now ONE call each, via apiValidateResearch ────────────── */
 
 async function validateSubmission(id) {
-  const validateBtn = document.querySelector(".action-row .btn-success");
-  const returnBtn    = document.querySelector(".action-row .btn-ghost");
+  const validateBtn = document.getElementById("approveReviewBtn");
+  const returnBtn = document.getElementById("returnReviewBtn");
+  reviewFeedback("Approving submission...");
   if (validateBtn) validateBtn.disabled = true;
   if (returnBtn)    returnBtn.disabled  = true;
 
@@ -314,12 +346,13 @@ async function validateSubmission(id) {
     await apiValidateResearch(id, "validated", feedback);
 
     toast("Submission validated and approved.", "success");
+    closeReviewSheet();
     currentId = null;
     await loadSubmissions();
     document.getElementById("detailPanel").innerHTML =
-      "<div class='empty-detail'><div class='icon'>✅</div><p class='empty-detail-title'>Submission validated.</p></div>";
+      `<div class='empty-detail'><div class='icon'>${uiIconMarkup("review")}</div><p class='empty-detail-title'>Submission validated.</p></div>`;
   } catch (e) {
-    toast(`Validation failed: ${e.message}`, "error");
+    reviewFeedback(`Approval failed: ${e.message}`, true);
     if (validateBtn) validateBtn.disabled = false;
     if (returnBtn)    returnBtn.disabled  = false;
   }
@@ -328,27 +361,39 @@ async function validateSubmission(id) {
 async function returnSubmission(id) {
   const feedback = document.getElementById("feedbackInput")?.value.trim();
   if (!feedback) {
-    toast("Please enter feedback before returning.", "error");
+    reviewFeedback("Enter feedback before returning this paper.", true);
+    document.getElementById("feedbackInput").setAttribute("aria-invalid", "true");
+    document.getElementById("feedbackInput").focus();
     return;
   }
 
-  const validateBtn = document.querySelector(".action-row .btn-success");
-  const returnBtn    = document.querySelector(".action-row .btn-ghost");
+  const validateBtn = document.getElementById("approveReviewBtn");
+  const returnBtn = document.getElementById("returnReviewBtn");
+  document.getElementById("feedbackInput").removeAttribute("aria-invalid");
+  reviewFeedback("Returning submission...");
   if (validateBtn) validateBtn.disabled = true;
   if (returnBtn)    returnBtn.disabled  = true;
 
   try {
     await apiValidateResearch(id, "returned", feedback);
     toast("Submission returned with feedback.", "warning");
+    closeReviewSheet();
     currentId = null;
     await loadSubmissions();
     document.getElementById("detailPanel").innerHTML =
-      "<div class='empty-detail'><div class='icon'>↩️</div><p class='empty-detail-title'>Submission returned to student.</p></div>";
+      `<div class='empty-detail'><div class='icon'>${uiIconMarkup("return")}</div><p class='empty-detail-title'>Submission returned to student.</p></div>`;
   } catch (e) {
-    toast(`Return failed: ${e.message}`, "error");
+    reviewFeedback(`Return failed: ${e.message}`, true);
     if (validateBtn) validateBtn.disabled = false;
     if (returnBtn)    returnBtn.disabled  = false;
   }
+}
+
+function reviewFeedback(message, error = false) {
+  const status = document.getElementById("reviewStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle("is-error", error);
 }
 
 async function deletePaperFromDetail(id, title) {
@@ -366,7 +411,7 @@ async function deletePaperFromDetail(id, title) {
     selectedIds.delete(id);
     await loadSubmissions();
     document.getElementById("detailPanel").innerHTML =
-      "<div class='empty-detail'><div class='icon'>🗑️</div><p class='empty-detail-title'>Submission deleted.</p></div>";
+      `<div class='empty-detail'><div class='icon'>${uiIconMarkup("trash")}</div><p class='empty-detail-title'>Submission deleted.</p></div>`;
     updateBulkBar();
   } catch (e) {
     toast(`Delete failed: ${e.message}`, "error");

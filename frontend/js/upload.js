@@ -100,17 +100,25 @@ function fileChosen(e) {
 }
 
 
+function fileFeedback(message, error = true) {
+  const status = document.getElementById("fileStatus");
+  status.textContent = message;
+  status.classList.toggle("is-error", error);
+  document.getElementById("dropZone").setAttribute("aria-invalid", String(error && !!message));
+}
+
 function setFile(file) {
   if (!file.name.toLowerCase().endsWith(".pdf")) {
-    toast("Only PDF files are accepted.", "error");
+    fileFeedback("Only PDF files are accepted.");
     return;
   }
 
   if (file.size > 25 * 1024 * 1024) {
-    toast("File exceeds the 25MB limit.", "error");
+    fileFeedback("File exceeds the 25MB limit.");
     return;
   }
 
+  fileFeedback("", false);
   selectedFile = file;
 
   if (selectedFileBlobUrl) URL.revokeObjectURL(selectedFileBlobUrl);
@@ -124,6 +132,7 @@ function setFile(file) {
   document.getElementById("fileInfo").style.display = "flex";
 
   document.getElementById("dropZone").style.display = "none";
+  document.querySelector('#fileInfo button').focus();
 }
 
 /** Opens the locally-selected file (before any upload) so the user can
@@ -131,13 +140,14 @@ function setFile(file) {
  * — it's just the browser's own copy of the file. */
 function viewSelectedFile() {
   if (!selectedFileBlobUrl) {
-    toast("No file selected.", "error");
+    fileFeedback("No file selected.");
     return;
   }
   window.open(selectedFileBlobUrl, "_blank");
 }
 
 function clearFile() {
+  fileFeedback("", false);
   selectedFile = null;
 
   if (selectedFileBlobUrl) {
@@ -148,6 +158,7 @@ function clearFile() {
   document.getElementById("fileInfo").style.display = "none";
 
   document.getElementById("dropZone").style.display = "block";
+  document.getElementById("dropZone").focus();
 
   document.getElementById("fileInput").value = "";
 
@@ -169,7 +180,7 @@ function setStep(num) {
 
 async function submitPaper() {
   if (!selectedFile) {
-    toast("Please select a PDF first.", "error");
+    fileFeedback("Please select a PDF first.");
     return;
   }
 
@@ -225,7 +236,7 @@ async function submitPaper() {
 
     btn.disabled = false;
 
-    btn.textContent = "Submit Research →";
+    btn.replaceChildren("Submit Research ", createUiIcon("arrow-right"));
 
   } finally {
     uploadInProgress = false;
@@ -236,19 +247,19 @@ async function submitPaper() {
 /* ── Step 3: in-flow review + public-PDF consent ─────────────────────── */
 
 function showStep3Review(meta) {
-  document.getElementById("metaTitle").textContent =
+  document.getElementById("metaTitle").value =
     meta.title || "—";
 
-  document.getElementById("metaAuthors").textContent =
+  document.getElementById("metaAuthors").value =
     meta.authors || "—";
 
-  document.getElementById("metaYear").textContent =
-    meta.year || "—";
+  document.getElementById("metaYear").value =
+    meta.year_normalized || (meta.year === "Unknown" ? "" : meta.year) || "";
 
-  document.getElementById("metaCollege").textContent =
+  document.getElementById("metaCollege").value =
     meta.college || "—";
 
-  document.getElementById("metaAbstract").textContent =
+  document.getElementById("metaAbstract").value =
     meta.abstract || "—";
 
   document.getElementById("metaKeywords").textContent =
@@ -281,6 +292,7 @@ function showStep3Review(meta) {
 
   document.getElementById("step1Pane").style.display = "none";
   document.getElementById("step3Review").style.display = "block";
+  document.getElementById("metaTitle").focus();
 }
 
 /** Enables Confirm & Submit only after an explicit consent choice. */
@@ -321,7 +333,7 @@ function cancelMetaConfirm() {
   const submitBtn = document.getElementById("submitBtn");
   submitBtn.style.display = "";
   submitBtn.disabled = false;
-  submitBtn.textContent = "Submit Research →";
+  submitBtn.replaceChildren("Submit Research ", createUiIcon("arrow-right"));
 
   currentPreviewId = null;
   setStep(1);
@@ -369,7 +381,7 @@ async function confirmMetaAndSubmit() {
   try {
     const result = await apiIngestConfirm(
       currentPreviewId,
-      {},
+      Object.fromEntries([["title", "Title"], ["authors", "Authors"], ["department", "College"], ["year", "Year"], ["abstract", "Abstract"]].map(([key, field]) => [key, document.getElementById(`meta${field}`).value.trim()])),
       publicPdfConsent
     );
 
@@ -404,7 +416,7 @@ async function confirmMetaAndSubmit() {
 
     btn.disabled = false;
 
-    btn.textContent = "Confirm & Submit →";
+    btn.replaceChildren("Confirm & Submit ", createUiIcon("arrow-right"));
 
   } finally {
     uploadInProgress = false;

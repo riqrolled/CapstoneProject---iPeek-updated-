@@ -52,7 +52,7 @@ function renderUsers() {
   if (usersCache.length === 0) {
     list.innerHTML =
       '<div class="empty-state">' +
-      '<div class="empty-state-icon">👥</div>' +
+      `<div class="empty-state-icon">${uiIconMarkup("users")}</div>` +
       '<div class="empty-detail-title">No users found</div>' +
       '<div class="empty-detail-sub">Try toggling “Include deactivated accounts”.</div>' +
       "</div>";
@@ -155,10 +155,12 @@ function askToggle(user, toActive) {
   };
 
   document.getElementById("confirmModal").style.display = "flex";
+  uiDialog.open("confirmModal", closeConfirm);
 }
 
 function closeConfirm() {
   document.getElementById("confirmModal").style.display = "none";
+  uiDialog.close("confirmModal");
   pendingConfirmAction = null;
 }
 
@@ -182,11 +184,13 @@ function openAddUserModal() {
   document.getElementById("newEmail").value = "";
   document.getElementById("newDepartment").value = "";
   document.getElementById("addModal").style.display = "flex";
+  uiDialog.open("addModal", closeAddModal);
   document.getElementById("newFullname").focus();
 }
 
 function closeAddModal() {
   document.getElementById("addModal").style.display = "none";
+  uiDialog.close("addModal");
 }
 
 async function createUser() {
@@ -207,6 +211,7 @@ async function createUser() {
     document.getElementById("generatedPw").textContent = result.generated_password;
     document.getElementById("addFormView").style.display = "none";
     document.getElementById("addResultView").style.display = "";
+    document.querySelector("#addResultView button").focus();
     toast("Account created.", "success");
     await loadUsers();
   } catch (e) {

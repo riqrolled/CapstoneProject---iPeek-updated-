@@ -231,6 +231,7 @@ class DashboardStats(BaseModel):
     approved_research: int
     ongoing_research: int
     rejected_research: int
+    total_users: int
 
 
 # ---------- AI ----------
@@ -251,6 +252,17 @@ class RefineIn(BaseModel):
     target: str  # "similarity" | "summary" | "gap" | "imrad"
 
 
+class AnalysisSource(BaseModel):
+    title: str
+    authors: str
+    year: str | int | None = None
+    college: str
+    pages: list
+    research_id: int | None = None
+    source_stem: str | None = None
+    abstract: str | None = None
+
+
 class AnalysisOut(BaseModel):
     result: str
-    sources: list
+    sources: list[AnalysisSource]

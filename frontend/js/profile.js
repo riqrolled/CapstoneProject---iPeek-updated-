@@ -123,7 +123,6 @@ async function saveChanges() {
   const confirmPw = document.getElementById("confirmPw").value;
 
   if (!firstName || !lastName) { toast("First and last name are required.", "error"); return; }
-  if (!email || !email.includes("@")) { toast("Please enter a valid email address.", "error"); return; }
 
   const wantsPasswordChange = currentPw || newPw || confirmPw;
   if (wantsPasswordChange) {

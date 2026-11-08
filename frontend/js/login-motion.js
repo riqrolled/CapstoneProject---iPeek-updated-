@@ -1,27 +1,7 @@
 /**
- * login-motion.js
- * ----------------
- * Additive motion layer for the redesigned Sign In / Register / Verify
- * flow. Does NOT modify, duplicate, or depend on login.js's internals —
- * it only:
- *   1. Listens on the SAME elements login.js's inline handlers already
- *      wire (showRegisterLink, showLoginLink) to also toggle the
- *      desktop image-panel slide orientation.
- *   2. Calls the SAME global functions login.js already exposes
- *      (showLogin(), showRegister()) from the new mobile toggle pill,
- *      so the toggle pill is just a second entry point into logic
- *      that already exists — not a new code path.
- *   3. Drives the mobile welcome screen dismissal (pure UI state,
- *      no auth logic involved).
- *   4. DESKTOP ONLY — sequences the form content to fade in AFTER the
- *      image-panel's slide finishes, instead of both changing at
- *      once. login.js already hard-cuts the panel content (loginPanel
- *      → registerPanel etc.) the instant the click happens; this
- *      just hides that already-swapped content for a beat, then
- *      reveals it right as the slide's transitionend fires.
- *
- * Load AFTER login.js so showLogin()/showRegister() already exist
- * in global scope by the time this file's listeners can call them.
+ * Login form motion shared by every showLogin()/showRegister() entry point.
+ * Desktop waits for the image panel slide; mobile fades immediately.
+ * Load after login.js.
  */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -32,85 +12,81 @@ document.addEventListener("DOMContentLoaded", () => {
   const toggleSignIn = document.getElementById("toggleSignIn");
   const toggleSignUp = document.getElementById("toggleSignUp");
 
-  const isDesktopSlide = () => window.matchMedia("(min-width: 901px)").matches;
+  const loginBox = authShell ? authShell.querySelector(".login-right") : null;
+  const desktop = window.matchMedia("(min-width: 769px)");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let waitingForSlide = false;
 
-  // Tracks the currently-pending transitionend listener so a rapid
-  // second click doesn't leave two competing listeners attached.
-  let pendingSlideHandler = null;
-
-  function sequenceFormFade() {
-    // Guard: on mobile there's no image-panel slide at all
-    // (.image-panel is display:none there) — its transitionend would
-    // never fire, which would leave the form permanently hidden.
-    // Skip the whole fade sequence there; the form just shows as-is.
-    if (!isDesktopSlide() || !imagePanel) return;
-
-    const loginBox = authShell ? authShell.querySelector(".login-right") : null;
-    if (!loginBox) return;
-
-    if (pendingSlideHandler) {
-      imagePanel.removeEventListener("transitionend", pendingSlideHandler);
-      pendingSlideHandler = null;
-    }
-
-    loginBox.classList.remove("form-fade-in");
-    loginBox.classList.add("form-fade-pending");
-
-    pendingSlideHandler = (e) => {
-      if (e.propertyName !== "left") return; // only the slide itself, not other transitions
-      loginBox.classList.remove("form-fade-pending");
-      loginBox.classList.add("form-fade-in");
-      loginBox.addEventListener("animationend", () => {
-        loginBox.classList.remove("form-fade-in");
-      }, { once: true });
-      imagePanel.removeEventListener("transitionend", pendingSlideHandler);
-      pendingSlideHandler = null;
-    };
-    imagePanel.addEventListener("transitionend", pendingSlideHandler);
+  function slideIsRunning() {
+    return imagePanel && imagePanel.getAnimations().some(animation =>
+      animation.transitionProperty === "left" && animation.playState !== "finished");
   }
 
-  /* ── Shared orientation setter — desktop slide + mobile toggle state ── */
+  function revealForm() {
+    if (!loginBox) return;
+    waitingForSlide = false;
+    loginBox.inert = false;
+    loginBox.classList.remove("form-fade-pending", "form-fade-in");
+    if (!reducedMotion.matches) {
+      // Commit removal so rapid switches restart the existing CSS animation.
+      void loginBox.offsetWidth;
+      loginBox.classList.add("form-fade-in");
+    }
+    requestAnimationFrame(() => {
+      const field = [...loginBox.querySelectorAll('input:not(:disabled)')].find(el => el.getClientRects().length);
+      field?.focus({preventScroll: true});
+    });
+  }
+
+  function finishSlide(event) {
+    if (event.target !== imagePanel || event.propertyName !== "left") return;
+    // A cancelled old slide may already have been replaced by a reverse slide.
+    if (waitingForSlide && !slideIsRunning()) revealForm();
+  }
+
   function setOrientation(isRegister) {
-    if (authShell)  authShell.classList.toggle("register-orientation", isRegister);
+    if (loginBox) {
+      loginBox.inert = true;
+      loginBox.classList.remove("form-fade-in");
+      loginBox.classList.add("form-fade-pending");
+    }
+    if (authShell) authShell.classList.toggle("register-orientation", isRegister);
     if (authToggle) authToggle.classList.toggle("on-register", isRegister);
     if (toggleSignIn) toggleSignIn.classList.toggle("active", !isRegister);
     if (toggleSignUp) toggleSignUp.classList.toggle("active", isRegister);
-    sequenceFormFade();
+    waitingForSlide = !reducedMotion.matches && desktop.matches && slideIsRunning();
+    if (!waitingForSlide) revealForm();
   }
 
-  /* ── Desktop: hook the existing text links to also slide the image ── */
-  const showRegisterLink = document.getElementById("showRegisterLink");
-  const showLoginLink    = document.getElementById("showLoginLink");
-
-  if (showRegisterLink) {
-    showRegisterLink.addEventListener("click", () => setOrientation(true));
+  // Fired synchronously before the incoming panel becomes visible.
+  document.addEventListener("login-form-switch", event => setOrientation(event.detail.isRegister));
+  if (imagePanel) {
+    imagePanel.addEventListener("transitionend", finishSlide);
+    imagePanel.addEventListener("transitioncancel", finishSlide);
   }
-  if (showLoginLink) {
-    showLoginLink.addEventListener("click", () => setOrientation(false));
-  }
-
-  /* ── Mobile: Sign In / Sign Up toggle pill ──────────────────────────
-     Calls the SAME showLogin()/showRegister() functions the existing
-     text links already call — this is not a new/duplicate code path,
-     just a second UI entry point into it. */
-  if (toggleSignIn) {
-    toggleSignIn.addEventListener("click", () => {
-      if (typeof showLogin === "function") showLogin();
-      setOrientation(false);
+  if (loginBox) {
+    loginBox.addEventListener("animationend", event => {
+      if (event.target === loginBox && event.animationName === "formFadeIn") {
+        loginBox.classList.remove("form-fade-in");
+      }
     });
   }
-  if (toggleSignUp) {
-    toggleSignUp.addEventListener("click", () => {
-      if (typeof showRegister === "function") showRegister();
-      setOrientation(true);
-    });
-  }
+  desktop.addEventListener("change", () => {
+    if (waitingForSlide && !desktop.matches) revealForm();
+  });
+  reducedMotion.addEventListener("change", () => {
+    if (reducedMotion.matches) revealForm();
+  });
+
+  if (toggleSignIn) toggleSignIn.addEventListener("click", () => showLogin());
+  if (toggleSignUp) toggleSignUp.addEventListener("click", () => showRegister());
 
   /* ── Mobile welcome screen dismissal ─────────────────────────────── */
   const mobileWelcomeSignIn = document.getElementById("mobileWelcomeSignIn");
   if (mobileWelcomeSignIn) {
     mobileWelcomeSignIn.addEventListener("click", () => {
       document.body.classList.add("welcome-dismissed");
+      document.getElementById("loginUid").focus();
     });
   }
 

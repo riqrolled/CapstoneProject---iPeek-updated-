@@ -1,45 +1,7 @@
-/**
- * browse.js
- * ---------
- * Handles the Browse Research page:
- *  - Fetches all approved documents from GET /api/documents
- *  - Renders research cards in the grid using safe DOM methods
- *  - Filters by: college, technology tag, year, and live search text
- *  - Clicking a card navigates to detail.html?id={source}
- *
- * BUG FIXES in this version:
- *  1. keywords crash — d.keywords was "Unknown" or null; .split() on it
- *     threw a silent JS error that stopped ALL cards from rendering.
- *     Fixed: safeStr() helper + keyword guard before every .split() call.
- *  2. College filter crash — assumed d.college was never null/undefined.
- *     Fixed: (d.college || "") defensive access + COLLEGE_MAP partial match.
- *  3. Search crash — d.authors and d.keywords accessed without null guard.
- *     Fixed: safeStr() wraps every field in filter logic.
- *  4. onclick injection — source stem interpolated directly into
- *     onclick="openDetail('${d.source}')" risked attribute breakout.
- *     Fixed: cards built with createElement + addEventListener.
- *  5. Nav now uses the shared applyNav(role) from api.js instead of
- *     manually rebuilding navbar HTML — keeps this page automatically
- *     in sync with NAV_LINKS (e.g. "My Submissions" for students)
- *     instead of needing a second edit here every time nav changes.
- */
-
-/* ── State ───────────────────────────────────────────────────────────────── */
 let allDocs = [];
-let filters = { college: "", tag: "", year: "all", search: "" };
+let filters = { college: "", year: "all", search: "" };
 
-/* College abbreviation → partial keyword map.
-   The LLM extracts full names like "College of Industrial Technology",
-   not the sidebar abbreviation "CIT" — partial matching bridges the gap.
-   Declared once at module scope (not rebuilt on every render() call). */
-const COLLEGE_MAP = {
-  CAS: ["arts", "sciences"],
-  CCI: ["computing", "informatics"],
-  CEA: ["engineering", "architecture"],
-  CIT: ["industrial", "technology"],
-  COE: ["education"],
-  CGBE: ["global", "business", "enterprise"],
-};
+
 
 /* ── Safe string helper ──────────────────────────────────────────────────── */
 
@@ -83,7 +45,7 @@ async function initPage() {
   /* Show page now that auth confirmed and nav is correct */
   document.body.style.visibility = "visible";
 
-  await loadDocuments();
+  await loadBrowseFilters();
 }
 
 /* ── Data loading ────────────────────────────────────────────────────────── */
@@ -92,20 +54,30 @@ async function initPage() {
  * Fetches all approved documents from the backend.
  * Shows an error toast if unreachable — never falls back to mock data.
  */
+let browseRequest = 0;
 async function loadDocuments() {
+  const request = ++browseRequest;
+  document.getElementById("loading").style.display = "block";
+  document.getElementById("grid").replaceChildren();
+  document.getElementById("empty").style.display = "none";
   try {
-    const data = await apiDocuments();
+    const data = await apiDocuments(filters);
+    if (request !== browseRequest) return;
     allDocs    = data.documents || [];
-  } catch {
-    toast("Could not load repository. Is the backend running?", "error");
+  } catch (error) {
+    if (request !== browseRequest) return;
+    toast(error.message, "error");
+    document.getElementById("resultsCount").textContent = error.message;
     allDocs = [];
+    const retry = document.createElement("button"); retry.textContent = "Retry"; retry.className = "btn btn-ghost"; retry.onclick = loadDocuments; document.getElementById("grid").appendChild(retry);
+    return;
   } finally {
     /* Always hide spinner regardless of outcome */
     const loading = document.getElementById("loading");
-    if (loading) loading.style.display = "none";
+    if (loading && request === browseRequest) loading.style.display = "none";
   }
 
-  updateCounts();
+  if (request !== browseRequest) return;
   render();
 }
 
@@ -122,34 +94,11 @@ function render() {
 
   const docs = allDocs.filter(d => {
 
-    /* College filter */
-    if (filters.college) {
-      const keywords = COLLEGE_MAP[filters.college] ||
-                       [filters.college.toLowerCase()];
-      const col      = safeStr(d.college).toLowerCase();
-      /* Papers with no college info are NOT hidden — avoids silently
-         excluding valid papers just because metadata was incomplete */
-      if (col && !keywords.some(k => col.includes(k))) return false;
-    }
-
-    /* Year filter — exact match on normalized 4-digit year */
-    if (filters.year !== "all") {
-      const yr = safeStr(d.year);
-      if (yr && yr !== filters.year) return false;
-    }
-
-    /* Tag filter */
-    if (filters.tag) {
-      const kw = safeStr(d.keywords).toLowerCase();
-      if (kw && !kw.includes(filters.tag.toLowerCase())) return false;
-    }
-
     /* Live search */
     if (q) {
       const title   = safeStr(d.title).toLowerCase();
       const authors = safeStr(d.authors).toLowerCase();
-      const kw      = safeStr(d.keywords).toLowerCase();
-      if (!title.includes(q) && !authors.includes(q) && !kw.includes(q)) {
+      if (!title.includes(q) && !authors.includes(q)) {
         return false;
       }
     }
@@ -175,12 +124,12 @@ function render() {
 
   /* Build each card with createElement — never innerHTML with data values */
   docs.forEach(d => {
-    const card = document.createElement("div");
+    const card = document.createElement("a");
     card.className = "r-card";
 
     /* Click handler via addEventListener — source never interpolated
        into an attribute string, preventing onclick injection */
-    card.addEventListener("click", () => openDetail(d.source));
+    card.href = `detail.html?id=${encodeURIComponent(d.source)}`;
 
     /* College · Year */
     const idEl = document.createElement("div");
@@ -197,28 +146,9 @@ function render() {
     metaEl.className   = "r-card-meta";
     metaEl.textContent = safeStr(d.authors) || "Authors unknown";
 
-    /* Tags — only rendered when keywords exist and aren't "Unknown" */
-    const tagsEl = document.createElement("div");
-    tagsEl.className = "r-card-tags";
-
-    const kwStr = safeStr(d.keywords);
-    if (kwStr) {
-      kwStr.split(",")
-        .map(t => t.trim())
-        .filter(Boolean)
-        .slice(0, 3)
-        .forEach(t => {
-          const tag = document.createElement("span");
-          tag.className   = "tag";
-          tag.textContent = t;
-          tagsEl.appendChild(tag);
-        });
-    }
-
     card.appendChild(idEl);
     card.appendChild(titleEl);
     card.appendChild(metaEl);
-    card.appendChild(tagsEl);
     grid.appendChild(card);
   });
 
@@ -228,47 +158,36 @@ function render() {
 /**
  * Updates the sidebar count badges after documents load.
  */
-function updateCounts() {
-  const total = allDocs.length;
-  const set   = (id, val) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = val;
-  };
-  set("cntAll",      total);
-  set("cntApproved", total);
-  set("cntOngoing",  0);
-  set("cntRejected", 0);
-  /* Mobile filter sheet counts */
-  set("cntAllM",      total);
-  set("cntApprovedM", total);
-  set("cntOngoingM",  0);
-  set("cntRejectedM", 0);
-}
-
-/* ── Filter handlers ─────────────────────────────────────────────────────── */
-
-function setFilter(type, value, el) {
-  el.closest(".sb-section")
-    .querySelectorAll(".sb-item")
-    .forEach(b => b.classList.remove("active"));
-  el.classList.add("active");
-
-  /* Toggle off same filter, except for status */
-  if (type !== "status") {
-    filters[type] = filters[type] === value ? "" : value;
-  } else {
-    filters[type] = value;
+async function loadBrowseFilters() {
+  try {
+    const data = await apiRepositoryFilters();
+    filters.college = data.user_college?.id || "";
+    filters.year = data.latest_year == null ? "all" : String(data.latest_year);
+    document.querySelectorAll(".college-filters").forEach(container => {
+      container.replaceChildren();
+      const label = document.createElement("span"); label.className = "sb-label"; label.textContent = "Colleges"; container.appendChild(label);
+      [{id: "", name: "All colleges", code: ""}, ...data.colleges].forEach(c => {
+        const button = document.createElement("button"); button.className = "sb-item"; button.dataset.college = String(c.id);
+        button.textContent = c.id ? `${c.code} - ${c.name} (${c.count})` : c.name;
+        button.onclick = () => { filters.college = c.id; syncCollegeButtons(); loadDocuments(); };
+        container.appendChild(button);
+      });
+    });
+    syncCollegeButtons();
+    const year = document.getElementById("yearFilter"); year.replaceChildren(new Option("All years", "all"));
+    data.years.forEach(y => year.add(new Option(String(y), String(y)))); year.value = filters.year; year.disabled = false;
+    year.onchange = () => { filters.year = year.value; loadDocuments(); };
+    await loadDocuments();
+  } catch (error) {
+    document.getElementById("loading").style.display = "none";
+    document.querySelectorAll(".college-filters").forEach(container => {
+      container.textContent = error.message;
+      const retry = document.createElement("button"); retry.className = "btn btn-ghost"; retry.textContent = "Retry"; retry.onclick = loadBrowseFilters; container.appendChild(retry);
+    });
   }
-
-  render();
 }
-
-function setYear(year, el) {
-  document.querySelectorAll(".year-pill")
-    .forEach(p => p.classList.remove("active"));
-  el.classList.add("active");
-  filters.year = year;
-  render();
+function syncCollegeButtons() {
+  document.querySelectorAll("[data-college]").forEach(button => button.classList.toggle("active", button.dataset.college === String(filters.college)));
 }
 
 function openDetail(source) {

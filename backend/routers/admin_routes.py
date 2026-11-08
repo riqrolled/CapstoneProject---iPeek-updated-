@@ -80,12 +80,14 @@ async def get_dashboard(
     approved = await db.scalar(select(func.count()).where(Research.status == StatusEnum.approved))
     pending = await db.scalar(select(func.count()).where(Research.status == StatusEnum.pending))
     returned = await db.scalar(select(func.count()).where(Research.status == StatusEnum.returned))
+    total_users = await db.scalar(select(func.count()).select_from(User))
 
     return DashboardStats(
         total_research=total or 0,
         approved_research=approved or 0,
         ongoing_research=pending or 0,
         rejected_research=returned or 0,
+        total_users=total_users,
     )
 
 

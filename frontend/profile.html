@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <script src="js/page-fade.js" defer blocking="render"></script>
 </head>
 <body style="visibility:hidden;">
   <nav class="navbar">
@@ -27,51 +28,51 @@
     <!-- Left column: avatar card -->
     <div>
       <div class="profile-avatar-card">
-        <div class="avatar-large" id="avatarLarge" title="Click to change photo">
+        <div class="avatar-large" id="avatarLarge">
           <span id="avatarInitials"></span>
-          <div class="avatar-edit">✏️</div>
+          <div class="avatar-edit"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#edit"/></svg></div>
         </div>
         <div class="profile-name" id="profileName"></div>
         <div class="profile-email" id="profileEmail"></div>
         <span class="role-pill" id="profileRolePill"></span>
         <div class="profile-meta">
-          <div class="profile-meta-item">🏛️ <strong id="metaUniv">ISAT-U</strong></div>
-          <div class="profile-meta-item">🪪 <strong id="metaId">—</strong></div>
-          <div class="profile-meta-item">📅 <strong>Member since 2019</strong></div>
-          <div class="profile-meta-item">📄 <strong id="metaPapers">0</strong> validated papers</div>
+          <div class="profile-meta-item"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#building"/></svg> <strong id="metaUniv">ISAT-U</strong></div>
+          <div class="profile-meta-item"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#identity"/></svg> <strong id="metaId">—</strong></div>
+          <div class="profile-meta-item"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#calendar"/></svg> <strong>Member since 2019</strong></div>
+          <div class="profile-meta-item"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#document"/></svg> <strong id="metaPapers">0</strong> validated papers</div>
         </div>
       </div>
     </div>
 
     <!-- Right column: settings form -->
     <div>
-      <div class="profile-form-card">
+      <form id="profileForm" class="profile-form-card" novalidate onsubmit="event.preventDefault(); saveChanges();">
         <div class="section-title">Personal Information</div>
 
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">First Name</label>
+            <label class="form-label" for="firstName">First Name</label>
             <input class="form-input" id="firstName" placeholder="First name">
           </div>
           <div class="form-group">
-            <label class="form-label">Last Name</label>
+            <label class="form-label" for="lastName">Last Name</label>
             <input class="form-input" id="lastName" placeholder="Last name">
           </div>
         </div>
 
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Email Address</label>
-            <input class="form-input" id="email" type="email" placeholder="email@isat-u.edu.ph">
+            <label class="form-label" for="email">Email Address</label>
+            <input class="form-input" id="email" readonly aria-describedby="emailHelp" type="email" placeholder="email@isat-u.edu.ph"><p id="emailHelp" class="text-sm">Your school email is your username and cannot be changed.</p>
           </div>
           <div class="form-group">
-            <label class="form-label">Contact Number</label>
+            <label class="form-label" for="contact">Contact Number</label>
             <input class="form-input" id="contact" placeholder="+63 9XX XXX XXXX">
           </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Department</label>
+          <label class="form-label" for="department">Department</label>
           <select class="form-input" id="department">
             <option>Library Services</option>
             <option>College of Engineering</option>
@@ -86,13 +87,13 @@
         <div class="section-title">Change Password</div>
 
         <div class="form-group">
-          <label class="form-label">Current Password</label>
+          <label class="form-label" for="currentPw">Current Password</label>
           <input class="form-input" id="currentPw" type="password" placeholder="Enter current password">
         </div>
 
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">New Password</label>
+            <label class="form-label" for="newPw">New Password</label>
             <input class="form-input" id="newPw" type="password" placeholder="Min. 8 characters" oninput="checkStrength(this.value)">
             <div class="pw-bar">
               <div class="pw-segment" id="pwSeg1"></div>
@@ -102,29 +103,30 @@
             <div class="pw-label" id="pwLabel"></div>
           </div>
           <div class="form-group">
-            <label class="form-label">Confirm Password</label>
+            <label class="form-label" for="confirmPw">Confirm Password</label>
             <input class="form-input" id="confirmPw" type="password" placeholder="Repeat new password">
           </div>
         </div>
 
         <!-- Desktop save/cancel -->
+        <p class="form-status profile-status" role="status"></p>
         <div class="form-actions-right profile-actions-desktop">
-          <button class="btn btn-ghost" onclick="cancelChanges()">Cancel</button>
-          <button class="btn btn-primary" onclick="saveChanges()">Save Changes</button>
+          <button type="button" class="btn btn-ghost" onclick="cancelChanges()">Cancel</button>
+          <button type="submit" form="profileForm" class="btn btn-primary profile-save">Save Changes</button>
         </div>
-      </div>
+      </form>
     </div>
   </div>
 
   <!-- Mobile sticky bottom bar -->
   <div class="profile-actions-sticky">
-    <button class="btn btn-ghost" onclick="cancelChanges()">Cancel</button>
-    <button class="btn btn-primary" onclick="saveChanges()">Save Changes</button>
+    <p class="form-status profile-status" role="status"></p>
+    <button type="button" class="btn btn-ghost" onclick="cancelChanges()">Cancel</button>
+    <button type="submit" form="profileForm" class="btn btn-primary profile-save">Save Changes</button>
   </div>
 
   <div class="toast-wrap" id="toasts"></div>
 
-  <script src="js/page-fade.js"></script>
   <script src="js/api.js"></script>
   <script src="js/pillnav.js"></script>
   <script src="js/motion.js"></script>

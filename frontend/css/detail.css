@@ -1,0 +1,922 @@
+/* ==========================================================
+   RESEARCH DETAIL READER
+   Styles the paper and research insights while preserving
+   shared navigation and other pages.
+   ========================================================== */
+
+
+/* ==========================================================
+   READER CONTAINER AND TOOLBAR
+   ========================================================== */
+
+/* Center the reader and limit its maximum width. */
+.detail-workspace {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 20px;
+  overflow: visible;
+}
+
+/* Ensure elements marked as hidden remain hidden. */
+.detail-workspace [hidden] {
+  display: none !important;
+}
+
+/* Align navigation and contextual text above the paper. */
+.reading-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.reading-toolbar .back-link {
+  margin: 0;
+}
+
+/* Small contextual label above a heading. */
+.reading-eyebrow {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+
+/* ==========================================================
+   DESKTOP COLUMNS
+   ========================================================== */
+
+/*
+ * Divide the reader into two equal columns.
+ * minmax(0, 1fr) allows long content to shrink within a column.
+ */
+.reader-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 26px;
+  align-items: start;
+}
+
+.paper-panel,
+.insights-panel {
+  min-width: 0;
+}
+
+/* Keep insights near the top in the standalone page layout. */
+.analysis-workspace {
+  min-width: 0;
+  position: sticky;
+  top: 80px;
+}
+
+
+/* ==========================================================
+   RELATED RESEARCH
+   ========================================================== */
+
+.related-studies {
+  margin-top: 18px;
+}
+
+/* Clickable heading for the expandable related-research list. */
+.related-studies > summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-size: 0.88rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+/* Individual related-paper card. */
+.related-card {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--card);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  overflow-wrap: anywhere;
+}
+
+.related-card h3 {
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.related-card a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Label identifying the research excerpt. */
+.related-card .excerpt-label {
+  margin: 14px 0 6px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+
+/* ==========================================================
+   PAPER CONTENT
+   Shared styles still provide general card and title sizing.
+   ========================================================== */
+
+/* Stack the paper's cards vertically. */
+.paper-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.paper-panel .reading-toolbar {
+  margin-bottom: 0;
+}
+
+/* Prevent long titles from overflowing their container. */
+.paper-title {
+  overflow-wrap: anywhere;
+}
+
+.paper-abstract .section-label,
+.paper-document .section-label {
+  font-family: var(--font-sans);
+  line-height: 1.25;
+}
+
+/* Preserve supplied line breaks while allowing text to wrap. */
+.paper-abstract .abstract-text {
+  white-space: pre-wrap;
+}
+
+.paper-document > .insight-note {
+  margin-bottom: 10px;
+}
+
+
+/* ==========================================================
+   INSIGHTS PANEL
+   ========================================================== */
+
+/*
+ * Stack the header, messages, and composer vertically.
+ * The maximum height follows the dynamic viewport height.
+ */
+.insights-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 148px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* Keep the header from shrinking when messages need space. */
+.insights-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.insights-header h2 {
+  font-size: 1.35rem;
+  margin-top: 6px;
+}
+
+/*
+ * Scroll messages inside the panel.
+ * Contain scroll chaining and reserve scrollbar space.
+ */
+.insights-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 80px;
+  padding: 22px;
+  scrollbar-gutter: stable;
+}
+
+
+/* ==========================================================
+   ASSISTANT MESSAGES
+   ========================================================== */
+
+/* Base appearance for an assistant response. */
+.insight-message {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 4px 16px 16px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Align the message icon, name, and context label. */
+.message-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
+/* Small iPeek identity mark beside assistant messages. */
+.ipeek-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+}
+
+.message-context {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 400;
+}
+
+/* Supporting explanations and source limitations. */
+.insight-note {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.65;
+}
+
+/* Separate analysis subsections when these elements are used. */
+.insight-section {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.insight-section h3 {
+  font-family: var(--font-sans);
+  font-size: 0.91rem;
+  margin-bottom: 12px;
+  color: var(--primary);
+}
+
+/* Preserve response line breaks and wrap long content. */
+.analysis-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.83rem;
+  line-height: 1.8;
+}
+
+
+/* ==========================================================
+   LOADING, EMPTY, AND ERROR STATES
+   ========================================================== */
+
+.insight-loading,
+.insight-empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+
+.insight-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.analysis-error {
+  font-size: 0.8rem;
+  color: var(--danger);
+}
+
+/* Separate a retry/action button from its error text. */
+.analysis-error .btn {
+  margin-top: 10px;
+}
+
+
+/* ==========================================================
+   STUDY RESULTS AND CITATIONS
+   ========================================================== */
+
+.study-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin: 12px 0;
+  background: var(--bg);
+}
+
+.study-card h4 {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--primary);
+  margin-bottom: 6px;
+}
+
+.study-card .analysis-text {
+  margin-top: 10px;
+}
+
+/* Small label describing the study's similarity level. */
+.study-level {
+  display: inline-block;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 2px 9px;
+  font-size: 0.71rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--card);
+}
+
+.source-references {
+  margin-top: 12px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.source-references summary {
+  cursor: pointer;
+  color: var(--primary);
+}
+
+.source-references ul,
+.recommendation-list {
+  padding-left: 18px;
+  margin-top: 8px;
+}
+
+.source-references li,
+.recommendation-list li {
+  margin-bottom: 8px;
+}
+
+.similarity-report {
+  margin-top: 14px;
+}
+
+.similarity-report summary {
+  font-size: 0.77rem;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+
+/* ==========================================================
+   REFINEMENT CONVERSATION
+   ========================================================== */
+
+/* Stack refinement requests and responses. */
+.refinement-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Add separation only when conversation messages exist. */
+.refinement-thread:not(:empty) {
+  margin-top: 24px;
+}
+
+/* Assistant responses align to the left. */
+.refinement-thread .insight-message {
+  align-self: flex-start;
+  width: 94%;
+}
+
+/* User requests align to the right. */
+.refinement-thread .user-message {
+  align-self: flex-end;
+  width: auto;
+  max-width: 88%;
+  background: var(--primary);
+  color: white;
+  border-radius: 16px 4px 16px 16px;
+}
+
+.user-message .message-label {
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+
+/* ==========================================================
+   REFINEMENT COMPOSER
+   ========================================================== */
+
+/* Keep the form from shrinking below its content height. */
+.insight-composer {
+  flex-shrink: 0;
+  padding: 16px 22px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.composer-heading,
+.composer-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.composer-heading {
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+/* Analysis-target dropdown. */
+.insight-composer select {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+}
+
+/* Allow vertical resizing within the existing height limits. */
+.insight-composer textarea {
+  resize: vertical;
+  min-height: 64px;
+  max-height: 140px;
+  font-size: 0.82rem;
+  cursor: text;
+}
+
+.composer-footer {
+  margin-top: 10px;
+}
+
+.composer-footer .insight-note {
+  max-width: 260px;
+  font-size: 0.68rem;
+}
+
+/* Feedback about a refinement request. */
+.refine-status {
+  font-size: 0.75rem;
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.refine-status:empty {
+  display: none;
+}
+
+/* Message shown when access to a feature is restricted. */
+.access-notice {
+  padding: 24px;
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+
+
+/* ==========================================================
+   READER TABS AND ACCESSIBILITY
+   ========================================================== */
+
+/* Shared appearance of the Paper / Insights tab container. */
+.reader-tabs {
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow: var(--shadow-inset-sm);
+  margin-bottom: 18px;
+}
+
+.reader-tabs button {
+  flex: 1;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+/* Highlight whichever tab is marked as selected. */
+.reader-tabs button[aria-selected="true"] {
+  background: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Visible keyboard-focus indicator. */
+.detail-workspace :focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+
+/* Hide supporting text visually without display: none. */
+.detail-workspace .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+
+/* ==========================================================
+   STANDALONE READER: SHORT DESKTOP VIEWPORTS
+   ========================================================== */
+
+@media (min-width: 769px) and (max-height: 650px) {
+  /* Let insights flow normally when vertical space is limited. */
+  .analysis-workspace {
+    position: static;
+  }
+
+  .insights-panel {
+    max-height: none;
+  }
+
+  .insights-scroll {
+    overflow: visible;
+  }
+}
+
+
+/* ==========================================================
+   READER SPACING: 1000px AND BELOW
+   ========================================================== */
+
+@media (max-width: 1000px) {
+  .insights-scroll,
+  .insights-header,
+  .insight-composer {
+    padding: 16px;
+  }
+}
+
+
+/* ==========================================================
+   STANDALONE READER: 768px AND BELOW
+   ========================================================== */
+
+@media (max-width: 768px) {
+  /* Reserve bottom space, including the device safe area. */
+  .detail-workspace {
+    padding: 16px 12px calc(100px + env(safe-area-inset-bottom));
+  }
+
+  .reading-toolbar > .reading-eyebrow {
+    display: none;
+  }
+
+  .reader-tabs {
+    display: flex;
+  }
+
+  /* Replace the desktop columns with a block layout. */
+  .reader-columns {
+    display: block;
+  }
+
+  /* Remove the wrapper's layout box while retaining children. */
+  .analysis-workspace {
+    display: contents;
+  }
+
+  .insights-panel {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .insights-scroll {
+    overflow: visible;
+    padding: 16px 12px;
+  }
+
+  .insight-message {
+    padding: 16px;
+  }
+
+  .insight-composer {
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+
+  .composer-heading .insight-note {
+    display: none;
+  }
+}
+
+
+/* Disable workspace animation when reduced motion is requested. */
+@media (prefers-reduced-motion: reduce) {
+  .detail-workspace {
+    animation: none !important;
+  }
+}
+
+
+/* ==========================================================
+   DETAIL OVERLAY SHELL
+   Glass-inspired framing without live backdrop blur.
+   Reading surfaces remain opaque for readability.
+   ========================================================== */
+
+.detail-dialog {
+  position: fixed;
+
+  /* Use supplied viewport offsets, with fallback values. */
+  inset: calc(var(--reader-offset, 0px) + 76px) 20px auto;
+
+  margin: 0 auto;
+  width: min(1500px, calc(100% - 40px));
+  height: calc(var(--reader-viewport, 100dvh) - 96px);
+  max-width: none;
+  max-height: none;
+
+  /* Reserve room above the content for the Close control. */
+  padding: 42px 0 0;
+
+  border: 1px solid rgba(255,255,255,.8);
+  border-radius: 22px;
+  background: rgba(250,248,240,.96);
+  color: var(--text);
+  box-shadow: 0 18px 60px rgba(20,30,55,.2);
+  overflow: hidden;
+
+  /* Initial state before the opening class is applied. */
+  opacity: 0;
+  transform: scale(.97);
+  transition: opacity 230ms ease, transform 230ms ease;
+}
+
+/* Visible state of the dialog. */
+.detail-dialog.is-open {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Dim the underlying page without applying backdrop blur. */
+.detail-dialog::backdrop {
+  background: rgba(20,27,45,.3);
+  opacity: 0;
+  transition: opacity 230ms ease;
+}
+
+.detail-dialog.is-open::backdrop {
+  opacity: 1;
+}
+
+/* Background used by the direct detail-page layout. */
+.detail-direct {
+  background: var(--bg);
+}
+
+/* Position the Close control inside the dialog's top area. */
+.overlay-close {
+  position: absolute;
+  right: 16px;
+  top: 8px;
+}
+
+
+/* ==========================================================
+   READER INSIDE THE OVERLAY
+   These later rules override the standalone reader where
+   the reader is placed inside .detail-dialog.
+   ========================================================== */
+
+.detail-dialog .detail-workspace {
+  width: 100%;
+  height: 100%;
+  padding: 0 20px 20px;
+  animation: none;
+}
+
+/* Allow constrained content to shrink and scroll internally. */
+.detail-dialog .reader-columns {
+  height: 100%;
+  min-height: 0;
+}
+
+/* Scroll the paper independently from the insights column. */
+.detail-dialog .paper-panel {
+  display: block;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 3px 10px 12px 3px;
+  scrollbar-gutter: stable;
+}
+
+.detail-dialog .paper-panel > * {
+  margin-bottom: 16px;
+}
+
+.detail-dialog .paper-panel .reading-toolbar {
+  margin-bottom: 16px;
+}
+
+/* Disable standalone sticky positioning inside the dialog. */
+.detail-dialog .analysis-workspace {
+  position: static;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Fit insights to the available dialog height. */
+.detail-dialog .insights-panel {
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+  background: #f9f7ef;
+  box-shadow: none;
+}
+
+.detail-dialog .insights-header {
+  padding: 14px 18px;
+  flex-wrap: wrap;
+}
+
+/*
+ * Fill the remaining panel space with the message area.
+ * min-height: 0 allows it to shrink and scroll instead of
+ * expanding the entire panel.
+ */
+.detail-dialog .insights-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+}
+
+/* Opaque assistant messages prevent background interference. */
+.detail-dialog .insight-message {
+  background: #fff;
+  box-shadow: none;
+  border-radius: 14px;
+}
+
+/* Keep paper cards opaque with a restrained shadow. */
+.detail-dialog .card {
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(20,30,55,.05);
+  animation: none;
+}
+
+
+/* ==========================================================
+   CONVERSATIONAL INSIGHTS INSIDE THE OVERLAY
+   ========================================================== */
+
+/* Separate adjacent blocks of the opening response. */
+.opening-prose + .opening-prose {
+  margin-top: 20px;
+}
+
+.opening-prose .analysis-text {
+  line-height: 1.85;
+}
+
+/* Use pale gold for the user's refinement messages. */
+.detail-dialog .user-message {
+  background: rgba(245,197,24,.22);
+  color: var(--primary);
+  border-color: rgba(190,145,10,.2);
+}
+
+.detail-dialog .user-message .message-label {
+  color: var(--primary);
+}
+
+.detail-dialog .insight-composer {
+  padding: 12px 18px;
+  background: rgba(250,248,240,.97);
+}
+
+/* Use a border instead of an additional related-card shadow. */
+.detail-dialog .related-card {
+  box-shadow: none;
+  border: 1px solid var(--border);
+}
+
+/* Preserve research-card text styling when the card is a link. */
+.r-card[href] {
+  text-decoration: none;
+  color: inherit;
+}
+
+
+/* ==========================================================
+   MOBILE OVERLAY: 768px AND BELOW
+   ========================================================== */
+
+@media (max-width: 768px) {
+  /* Fit the dialog close to the viewport edges. */
+  .detail-dialog {
+    inset: calc(var(--reader-offset, 0px) + 8px) 8px auto;
+    width: calc(100% - 16px);
+    height: calc(var(--reader-viewport, 100dvh) - 16px);
+    border-radius: 16px;
+  }
+
+  /*
+   * Stack tabs above the active reader panel.
+   * Keep at least 10px of bottom padding or the safe-area size.
+   */
+  .detail-dialog .detail-workspace {
+    display: flex;
+    flex-direction: column;
+    padding: 0 10px max(10px, env(safe-area-inset-bottom));
+  }
+
+  /* Keep tabs from shrinking as reader content grows. */
+  .detail-dialog .reader-tabs {
+    flex-shrink: 0;
+    margin-bottom: 10px;
+  }
+
+  .detail-dialog .reader-columns {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .detail-dialog .insights-scroll {
+    padding: 12px;
+  }
+
+  .detail-dialog .insight-composer {
+    padding: 8px 12px;
+  }
+
+  .detail-dialog .insights-header {
+    padding: 8px 12px;
+  }
+
+  .detail-dialog .insights-header .reading-eyebrow {
+    display: none;
+  }
+
+  /* Reduce input height to preserve room for messages. */
+  .detail-dialog .insight-composer textarea {
+    min-height: 44px;
+    max-height: 90px;
+  }
+
+  .detail-dialog .composer-footer {
+    gap: 6px;
+  }
+
+  .detail-dialog .composer-footer .insight-note {
+    flex: 1;
+  }
+}
+
+
+/* ==========================================================
+   SHORT OVERLAY VIEWPORTS: 560px HIGH AND BELOW
+   ========================================================== */
+
+@media (max-height: 560px) {
+  /* Use more of the available vertical space. */
+  .detail-dialog {
+    top: calc(var(--reader-offset, 0px) + 4px);
+    height: calc(var(--reader-viewport, 100dvh) - 8px);
+  }
+
+  /* Hide these headings and help text to make room for content. */
+  .detail-dialog .insights-header,
+  .detail-dialog .composer-heading,
+  .detail-dialog #refineHelp {
+    display: none;
+  }
+
+  .detail-dialog .insight-composer textarea {
+    min-height: 38px;
+    max-height: 50px;
+  }
+}
+
+
+/* ==========================================================
+   OVERLAY REDUCED MOTION
+   ========================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Remove dialog/backdrop transitions and scaling. */
+  .detail-dialog,
+  .detail-dialog::backdrop {
+    transition: none;
+    transform: none;
+  }
+}

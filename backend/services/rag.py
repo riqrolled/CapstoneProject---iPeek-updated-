@@ -47,10 +47,12 @@ Context:
 
 Proposal: {question}
 
-List the top 3 most similar studies. For each:
-- Title, Authors, Year, College
-- Why it is similar (2-3 sentences, with page citations for specific claims)
-- Similarity: HIGH / MODERATE / LOW
+Discuss the top 3 most similar studies in short conversational paragraphs,
+without numbered lists or section headings. For each, identify its title,
+authors, year and college, explain why it is similar in 2-3 sentences with
+page citations, and state whether similarity is high, moderate or low.
+Distinguish retrieved studies from the proposal; do not imply their findings
+are findings of the selected paper.
 """)
 
 SUMMARY_PROMPT = PromptTemplate.from_template("""
@@ -63,7 +65,7 @@ Context:
 
 Proposal: {question}
 
-Write a 3-4 sentence summary covering:
+Write a conversational 3-4 sentence paragraph without headings covering:
 1. How the proposal relates to existing ISAT-U research
 2. What is already well-covered in the repository
 3. What makes this proposal potentially unique
@@ -79,10 +81,10 @@ Context:
 
 Proposal: {question}
 
-Identify 3-5 research gaps. For each:
-- Gap: One clear sentence
-- Recommendation: How the proposal addresses it
-- Urgency: HIGH / MEDIUM / LOW
+Discuss 3-5 research gaps in short conversational paragraphs without numbered
+lists or Gap/Recommendation/Urgency labels. For each, explain the gap clearly,
+how the proposal could address it, and whether its urgency is high, medium or
+low. Preserve evidence limitations; proposed work is not an established finding.
 """)
 
 IMRAD_PROMPT = PromptTemplate.from_template("""
@@ -120,7 +122,10 @@ class RAGService:
         result = await db.execute(select(AIAnalysis).where(AIAnalysis.research_id == research_id))
         analysis = result.scalar_one_or_none()
         if analysis and getattr(analysis, field):
-            sources = json.loads(analysis.sources) if (field == "similar_studies" and analysis.sources) else []
+            try:
+                sources = json.loads(analysis.sources) if (field == "similar_studies" and analysis.sources) else []
+            except (ValueError, TypeError):
+                return None  # Regenerate this result only; do not clear other fields.
             logger.info(f"Cache hit: {field} for research_id={research_id}")
             return {"result": getattr(analysis, field), "sources": sources}
         return None
@@ -227,16 +232,19 @@ class RAGService:
         seen = {}
         for doc in docs:
             source = doc.metadata.get("source")
+            if not isinstance(source, str) or not source:
+                continue  # A title is not a reliable document identifier.
             if exclude_source and source == exclude_source:
                 continue
             title = doc.metadata.get("title", "Untitled")
             page = doc.metadata.get("page", None)
-            key = source or title
+            key = source
             if key not in seen:
                 seen[key] = {
                     "title": title, "authors": doc.metadata.get("authors", "Unknown"),
                     "year": doc.metadata.get("year", "Unknown"), "college": doc.metadata.get("college", "Unknown"),
                     "pages": [],
+                    "source_stem": source,
                 }
             if page is not None and page not in seen[key]["pages"]:
                 seen[key]["pages"].append(page)
@@ -245,25 +253,55 @@ class RAGService:
             s["pages"].sort()
         return sources
 
+    async def _enrich_sources(self, sources: list, db: AsyncSession) -> list:
+        """Resolve exact identifiers in one query; never expose unapproved rows."""
+        stems = {s.get("source_stem") for s in sources
+                 if isinstance(s, dict) and isinstance(s.get("source_stem"), str)
+                 and s["source_stem"]}
+        if not stems:
+            return []
+        result = await db.execute(select(Research).where(
+            Research.source_stem.in_(stems), Research.status == StatusEnum.approved,
+        ))
+        papers = {paper.source_stem: paper for paper in result.scalars().all()}
+        enriched = []
+        for source in sources:
+            stem = source.get("source_stem") if isinstance(source, dict) else None
+            paper = papers.get(stem) if isinstance(stem, str) else None
+            if paper is None:
+                continue
+            if source.get("research_id") not in (None, paper.id):
+                continue  # A reused stem cannot validate another paper's cached prose.
+            enriched.append({**source, "research_id": paper.id,
+                             "source_stem": paper.source_stem, "abstract": paper.abstract})
+        return enriched
+
     async def _run(
         self, prompt: PromptTemplate, query: str, db: AsyncSession,
         exclude_source: str | None = None,
     ) -> dict:
         docs = await self._retrieve_and_rerank(query, db, exclude_source=exclude_source)
+        sources = await self._enrich_sources(self._get_sources(docs, exclude_source), db)
+        eligible = {source["source_stem"] for source in sources}
+        docs = [doc for doc in docs if doc.metadata.get("source") in eligible]
         context = self._format_context(docs)
         chain = prompt | self._llm | self._parser
         result = await chain.ainvoke({"context": context, "question": query})   # async — never blocks the event loop
-        return {"result": result, "sources": self._get_sources(docs, exclude_source=exclude_source),
+        return {"result": result, "sources": sources,
                 "had_docs": bool(docs)}
 
     # ── Public methods ──────────────────────────────────────────────
 
     async def get_similar_studies(self, proposal: str, research_id: int, db: AsyncSession) -> dict:
         cached = await self._get_cached(research_id, "similar_studies", db)
-        if cached:
-            return cached
+        if cached and isinstance(cached["sources"], list) and cached["sources"]:
+            enriched = await self._enrich_sources(cached["sources"], db)
+            if (len(enriched) == len(cached["sources"])
+                    and all(s["research_id"] != research_id for s in enriched)):
+                return {**cached, "sources": enriched}
         # Similarity is the ONLY analysis that must not see the paper's own
-        # chunks — summary/IMRaD/gaps/refine keep using the paper's own text.
+        # chunks, including refinement. Unresolvable legacy caches regenerate
+        # only similar_studies and its sources through the normal save path.
         stem = await self._source_stem_for(research_id, db)
         data = await self._run(SIMILAR_PROMPT, proposal, db, exclude_source=stem)
         return await self._save_if_usable(
@@ -297,6 +335,9 @@ class RAGService:
         prompt = prompt_map.get(target)
         if not prompt:
             raise ValueError(f"Invalid refine target: {target}")
+        if target == "similarity":
+            stem = await self._source_stem_for(research_id, db)
+            return await self._run(prompt, proposal, db, exclude_source=stem)
         return await self._run(prompt, proposal, db)
 
 

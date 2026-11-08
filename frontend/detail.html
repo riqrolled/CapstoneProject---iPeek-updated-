@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/detail.css">
+  <script src="js/page-fade.js" defer blocking="render"></script>
 </head>
 <body style="visibility:hidden;">
   <nav class="navbar">
@@ -23,114 +25,85 @@
     </div>
   </nav>
 
-  <div class="layout-two">
-
-    <a class="back-link" href="browse.html">← Back to Browse</a>
-
-    <!-- Paper info card -->
-    <div class="card" style="margin-bottom:14px;">
-      <div class="paper-title" id="paperTitle">Loading...</div>
-      <div class="paper-meta" id="paperMeta"></div>
-      <div class="meta-chips" id="metaChips"></div>
+  <main class="main detail-workspace">
+    <div class="reader-tabs" role="tablist" aria-label="Research detail views" hidden>
+      <button id="paperTab" type="button" role="tab" aria-controls="paperPanel" aria-selected="true">Paper</button>
+      <button id="insightsTab" type="button" role="tab" aria-controls="insightsPanel" aria-selected="false" tabindex="-1">Insights</button>
     </div>
-
-    <!-- Abstract card -->
-    <div class="card" style="margin-bottom:14px;">
-      <div class="section-label">Abstract</div>
-      <div class="abstract-text" id="abstractText">Loading...</div>
+    <div class="reader-columns">
+      <section id="paperPanel" class="paper-panel" aria-labelledby="paperTitle">
+    <div class="reading-toolbar">
+      <a class="back-link" data-detail-close href="browse.html"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#arrow-left"/></svg> Close / Back to Browse</a>
     </div>
-
-    <!-- Full-document card — restored from the old #pdfViewerTrigger slot.
-         Shown ONLY when the author gave submission-time public_pdf_consent;
-         otherwise hidden (remote viewers get the IMRaD card below instead). -->
-    <div class="card" id="pdfViewerTrigger" style="display:none;margin-bottom:14px;">
-      <button class="btn btn-accent btn-full" onclick="readFullVersion()">
-        📄 Read Full Version
-      </button>
-    </div>
-
-    <!-- IMRaD card — occupies the slot where the full-document viewer
-         (#pdfViewerCard) used to render. Shown ONLY when the author did
-         NOT give public_pdf_consent: remote viewers see the IMRaD summary
-         instead of the full PDF. Hidden entirely when consent was given.
-         Sits BETWEEN the Abstract and the AI refine bar. -->
-    <div class="card" id="imradViewerCard" style="display:none;margin-bottom:14px;">
-      <div class="section-label">IMRaD Summary</div>
-      <p class="text-muted text-sm" style="margin-bottom:10px;">
-        The author did not permit remote viewing of the full PDF — this
-        AI-generated summary is shown instead. The complete document
-        remains available in-person at the Library Viewing Station.
-      </p>
-      <div class="ai-box" id="imradBox">
-        <div style="display:flex;align-items:center;gap:8px;color:var(--muted);">
-          <div class="spinner"></div>
+        <article class="card paper-info">
+          <h1 class="paper-title" id="paperTitle">Loading research...</h1>
+          <p class="paper-meta" id="paperMeta"></p>
+          <div class="meta-chips" id="metaChips"></div>
+        </article>
+          <section class="card paper-abstract" aria-labelledby="abstractHeading">
+            <h2 class="section-label" id="abstractHeading">Abstract</h2>
+            <div class="abstract-text" id="abstractText">Loading...</div>
+          </section>
+          <section id="pdfViewerTrigger" class="card paper-document" hidden aria-label="Full paper">
+            <button id="readPdfBtn" type="button" class="btn btn-accent btn-full">
+              <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#document"/></svg> Read Full Version
+            </button>
+          </section>
+          <section id="imradViewerCard" class="card paper-document" hidden aria-labelledby="imradHeading">
+            <h2 class="section-label" id="imradHeading">IMRaD Summary</h2>
+            <p class="insight-note">The author did not permit remote PDF viewing. This AI-generated guide uses retrieved repository context; consult the full paper at the Library Viewing Station to verify its methods and findings.</p>
+            <div class="ai-box" id="imradBox" aria-live="polite"></div>
+          </section>
+          <p id="consentNotice" class="insight-note" hidden>The author did not permit remote PDF viewing. The full paper is available at the Library Viewing Station.</p>
+      </section>
+      <div class="analysis-workspace">
+      <section id="insightsPanel" class="insights-panel" aria-labelledby="insightsHeading">
+        <header class="insights-header">
+          <div><p class="reading-eyebrow">READ WITH CONTEXT</p><h2 id="insightsHeading">Research Insights</h2></div>
+          <span class="badge badge-pending" id="analysisStatus" role="status">Loading...</span>
+        </header>
+        <p id="aiAccessNotice" class="access-notice" hidden>Research Insights is available to students and library staff. You can read the paper's abstract and any PDF the author permits you to view.</p>
+        <div id="insightsScroll" class="insights-scroll">
+          <article id="openingResponse" class="insight-message" aria-label="iPeek opening analysis">
+            <div class="message-label"><span class="ipeek-mark" aria-hidden="true">i</span> iPeek <span class="message-context">Opening analysis</span></div>
+            <p class="insight-note">Repository-based analysis to help you explore this paper. Check the cited sources before treating it as a finding of the selected paper.</p>
+            <div id="summaryBox" class="opening-prose" aria-live="polite"></div>
+            <div id="similarityBox" class="opening-prose" aria-live="polite"></div>
+            <div id="gapsBox" class="opening-prose" aria-live="polite"></div>
+            <details id="relatedStudies" class="related-studies" open>
+              <summary>Related Research</summary>
+              <p id="relatedOrigin" class="insight-note">Sources from the opening similarity analysis, in returned order. Up to five unique papers.</p>
+              <div id="relatedBox" aria-live="polite"></div>
+            </details>
+          </article>
+          <div id="refinementThread" class="refinement-thread" role="log" aria-label="Analysis refinements" aria-live="polite" aria-relevant="additions text"></div>
         </div>
+        <form id="refineForm" class="insight-composer" hidden>
+          <div class="composer-heading"><label for="refineTarget">Refine analysis</label><span class="insight-note">One request at a time</span></div>
+          <select id="refineTarget" class="form-input">
+            <option value="auto">Auto (Research Similarity)</option>
+            <option value="similarity">Research Similarity</option>
+            <option value="summary">Summary</option>
+            <option value="gap">Research Gaps</option>
+            <option value="imrad">IMRaD</option>
+          </select>
+          <label class="sr-only" for="refineInput">Refinement prompt</label>
+          <textarea id="refineInput" class="form-input" rows="2" maxlength="4000" placeholder="What would you like to expand or refocus?" aria-describedby="refineHelp refineStatus" required></textarea>
+          <div class="composer-footer"><p id="refineHelp" class="insight-note">Refines the selected analysis. Earlier messages are not sent.</p><button id="refineBtn" class="btn btn-accent" type="submit">Refine</button></div>
+          <p id="refineStatus" class="refine-status" role="status"></p>
+        </form>
+      </section>
       </div>
     </div>
-
-    <!-- AI refine bar -->
-    <div class="card refine-bar" style="margin-bottom:14px;">
-      <div class="refine-row">
-        <select id="refineTarget" class="form-input refine-select">
-          <option value="auto">Auto (active tab)</option>
-          <option value="similarity">Similarity</option>
-          <option value="summary">Summary</option>
-          <option value="gap">Gap</option>
-        </select>
-        <input id="refineInput" class="form-input refine-input" placeholder="Ask AI to expand or refocus the analysis...">
-        <button id="refineBtn" class="btn btn-accent" onclick="refineAnalysis()">Refine</button>
-      </div>
-    </div>
-
-    <!-- AI Analysis card -->
-    <div class="ai-analysis-card" style="margin-bottom:14px;">
-      <div class="analysis-header">
-        <h3>AI Analysis</h3>
-        <span class="badge badge-pending" id="analysisStatus">Running...</span>
-      </div>
-
-      <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('similarity',this)">Similarity Report</button>
-        <button class="tab-btn" onclick="switchTab('summary',this)">AI Summary</button>
-        <button class="tab-btn" onclick="switchTab('gaps',this)">Research Gap</button>
-      </div>
-
-      <div id="tabSimilarity">
-        <div id="simBars">
-          <div style="display:flex;align-items:center;gap:8px;padding:20px;color:var(--muted);justify-content:center;">
-            <div class="spinner"></div>
-          </div>
-        </div>
-        <!-- Citation badges rendered here by detail.js -->
-        <div class="citation-badges" id="citationBadges"></div>
-      </div>
-
-      <div id="tabSummary" style="display:none;">
-        <div class="ai-box" id="summaryBox">
-          <div style="display:flex;align-items:center;gap:8px;color:var(--muted);">
-            <div class="spinner"></div>
-          </div>
-        </div>
-      </div>
-
-      <div id="tabGaps" style="display:none;">
-        <div class="ai-box" id="gapsBox">
-          <div style="display:flex;align-items:center;gap:8px;color:var(--muted);">
-            <div class="spinner"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
+  </main>
 
   <div class="toast-wrap" id="toasts"></div>
 
-  <script src="js/page-fade.js"></script>
   <script src="js/api.js"></script>
   <script src="js/pillnav.js"></script>
   <script src="js/motion.js"></script>
   <script src="js/detail.js"></script>
+  <script src="js/detail-overlay.js"></script>
 
   <script>
     async function logout() {

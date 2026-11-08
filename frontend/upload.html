@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <script src="js/page-fade.js" defer blocking="render"></script>
 </head>
 
 <body style="visibility:hidden;">
@@ -29,7 +30,7 @@
     <div class="card">
 
       <div class="mb-lg">
-        <h2 style="font-size:1.05rem;margin-bottom:4px;">Upload Research Paper</h2>
+        <h2 class="form-heading">Upload Research Paper</h2>
         <p class="text-muted text-sm">
           Drop your PDF below. Our AI will extract the title, authors, year, department,
           and abstract automatically — a librarian will review the details before it's published.
@@ -56,36 +57,39 @@
 
       <!-- Drag and drop zone -->
       <div id="step1Pane">
-        <div class="drop-zone"
-             id="dropZone"
+        <button type="button" class="drop-zone"
+             id="dropZone" aria-label="Choose a PDF, maximum 25 megabytes" aria-describedby="fileStatus"
              onclick="document.getElementById('fileInput').click()"
              ondragover="dragOver(event)"
              ondragleave="dragLeave(event)"
              ondrop="dropped(event)">
-          <div class="drop-icon">📄</div>
-          <div class="drop-text">
+          <span class="drop-icon"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#document"/></svg></span>
+          <span class="drop-text">
             <strong>Drag &amp; drop your PDF here</strong><br>
             or <span>click to browse files</span> — max 25MB
-          </div>
+          </span>
+        </button>
           <input type="file" id="fileInput" accept=".pdf" style="display:none" onchange="fileChosen(event)">
-        </div>
+
 
         <!-- File info chip -->
         <div id="fileInfo" class="file-info-chip" style="display:none;">
-          <span>📄</span>
+          <span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#document"/></svg></span>
           <span id="fileName" class="file-name"></span>
           <span id="fileSize" class="file-size"></span>
-          <button class="btn btn-ghost btn-sm" onclick="viewSelectedFile()" title="Preview PDF">👁 View</button>
-          <button class="btn-clear" onclick="clearFile()" title="Remove file">✕</button>
+          <button class="btn btn-ghost btn-sm" onclick="viewSelectedFile()" title="Preview PDF"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#eye"/></svg> View</button>
+          <button class="btn-clear" onclick="clearFile()" title="Remove file" aria-label="Remove file"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#close"/></svg></button>
         </div>
 
+        <p id="fileStatus" class="form-status" role="status"></p>
+
         <!-- Status message -->
-        <div id="submitStatus" style="display:none;" class="mt-md"></div>
+        <div id="submitStatus" role="status" style="display:none;" class="mt-md"></div>
 
         <div class="form-actions mt-lg">
           <div></div>
           <button class="btn btn-accent btn-lg" id="submitBtn" onclick="submitPaper()">
-            Submit Research →
+            Submit Research <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#arrow-right"/></svg>
           </button>
         </div>
       </div>
@@ -93,7 +97,7 @@
       <!-- Step 3: Review + public-PDF consent — in-flow content, NOT a
            dismissible modal, so the consent choice can't be skipped by
            clicking outside. Hidden until AI extraction completes. -->
-      <div id="step3Review" class="review-card" style="display:none;">
+      <form novalidate onsubmit="event.preventDefault(); confirmMetaAndSubmit();" id="step3Review" class="review-card" style="display:none;">
         <div class="section-label">Step 3 — Review &amp; Submit</div>
         <p class="text-muted text-sm">
           Review the extracted details below. This is what will be submitted for librarian review.
@@ -101,24 +105,24 @@
 
         <div class="meta-grid">
           <div>
-            <span class="text-muted">Title:</span><br>
-            <strong id="metaTitle">—</strong>
+            <label class="form-label" for="metaTitle">Title</label>
+            <input class="form-input" id="metaTitle" aria-label="Title" maxlength="255">
           </div>
           <div>
-            <span class="text-muted">Authors:</span><br>
-            <strong id="metaAuthors">—</strong>
+            <label class="form-label" for="metaAuthors">Authors</label>
+            <input class="form-input" id="metaAuthors" aria-label="Authors" maxlength="255">
           </div>
           <div>
-            <span class="text-muted">Year:</span><br>
-            <strong id="metaYear">—</strong>
+            <label class="form-label" for="metaYear">Year</label>
+            <input class="form-input" id="metaYear" aria-label="Year" maxlength="20">
           </div>
           <div>
-            <span class="text-muted">College / Department:</span><br>
-            <strong id="metaCollege">—</strong>
+            <label class="form-label" for="metaCollege">College / Department</label>
+            <input class="form-input" id="metaCollege" aria-label="College" maxlength="100">
           </div>
           <div>
-            <span class="text-muted">Abstract:</span><br>
-            <span id="metaAbstract" class="text-sm">—</span>
+            <label class="form-label" for="metaAbstract">Abstract</label>
+            <textarea class="form-input" id="metaAbstract" aria-label="Abstract" rows="6"></textarea>
           </div>
           <div>
             <span class="text-muted">Keywords:</span><br>
@@ -146,25 +150,24 @@
           <div class="consent-hint" id="consentHint">Select one option to continue.</div>
         </div>
 
-        <div id="step3Status" style="display:none;" class="mt-md"></div>
+        <div id="step3Status" role="status" style="display:none;" class="mt-md"></div>
 
         <div class="form-actions">
           <div class="flex-gap">
-            <button class="btn btn-ghost" onclick="cancelMetaConfirm()">Cancel</button>
-            <button class="btn btn-ghost" onclick="viewUploadedPdf()">📄 View Uploaded PDF</button>
+            <button type="button" class="btn btn-ghost" onclick="cancelMetaConfirm()">Cancel</button>
+            <button type="button" class="btn btn-ghost" onclick="viewUploadedPdf()"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#document"/></svg> View Uploaded PDF</button>
           </div>
-          <button class="btn btn-accent btn-lg" id="confirmMetaBtn" onclick="confirmMetaAndSubmit()" disabled>
-            Confirm & Submit →
+          <button type="submit" class="btn btn-accent btn-lg" id="confirmMetaBtn" disabled>
+            Confirm & Submit <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#arrow-right"/></svg>
           </button>
         </div>
-      </div>
+      </form>
 
     </div>
   </div>
 
   <div class="toast-wrap" id="toasts"></div>
 
-  <script src="js/page-fade.js"></script>
   <script src="js/api.js"></script>
   <script src="js/pillnav.js"></script>
   <script src="js/motion.js"></script>

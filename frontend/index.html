@@ -28,7 +28,7 @@
     <div class="mw-bottom">
       <h2>Research Discovery Made Simple</h2>
       <p>Discover, analyze, and explore research papers with AI-powered insights.</p>
-      <button type="button" class="btn-sign" id="mobileWelcomeSignIn">Sign In →</button>
+      <button type="button" class="btn-sign" id="mobileWelcomeSignIn">Sign In <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#arrow-right"/></svg></button>
       <p class="mw-footnote">ISAT-U institutional credentials only</p>
     </div>
   </div>
@@ -69,64 +69,82 @@
         <button type="button" id="toggleSignUp">Sign Up</button>
       </div>
 
-      <div id="loginPanel">
+      <form novalidate onsubmit="event.preventDefault(); login();" id="loginPanel">
         <div class="login-welcome">Welcome back</div>
         <h1 class="login-heading">Sign In</h1>
-        <div class="err-box" id="loginErr"></div>
-        <label class="login-label">Institutional Email</label>
-        <input class="login-input" id="loginUid" type="email" placeholder="you@students.isatu.edu.ph">
-        <label class="login-label">Password</label>
-        <input class="login-input" id="loginPwd" type="password" placeholder="Enter your password">
-        <button type="button" class="btn-sign" id="loginBtn">Sign In to Repository</button>
+        <label class="login-label" for="loginUid">Institutional Email</label>
+        <input class="login-input" id="loginUid" type="email" autocomplete="username" aria-describedby="loginErr" placeholder="you@students.isatu.edu.ph">
+        <label class="login-label" for="loginPwd">Password</label>
+        <input class="login-input" id="loginPwd" type="password" autocomplete="current-password" aria-describedby="loginErr" placeholder="Enter your password">
+        <div class="login-recovery-row">
+          <button type="button" class="btn btn-ghost btn-sm login-recovery" onclick="showReset()">Forgot password?</button>
+        </div>
+          <div class="err-box" id="loginErr" role="status"></div>
+        <button type="submit" class="btn-sign" id="loginBtn">Sign In to Repository</button>
         <div class="login-foot">
           Don't have an account?
           <a href="#" id="showRegisterLink">Create one</a>
         </div>
-      </div>
+      </form>
 
-      <div id="registerPanel" style="display:none;">
+      <div id="resetPanel" style="display:none;">
+          <h1 class="login-heading">Reset password</h1>
+          <p>Verify your email with a code. Your new password will be emailed to you.</p>
+
+          <form novalidate onsubmit="event.preventDefault(); requestReset();">
+          <label class="login-label" for="resetEmail">School email</label>
+          <input class="login-input" id="resetEmail" type="email" autocomplete="email">
+          <div class="err-box" id="resetErr" role="status"></div>
+          <button type="submit" class="btn-sign" id="resetRequest">Send reset code</button>
+          </form>
+          <form novalidate onsubmit="event.preventDefault(); confirmReset();" id="resetCodePane" style="display:none;">
+            <label class="login-label" for="resetCode">Verification code</label>
+            <input class="login-input" id="resetCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+            <button type="submit" class="btn-sign" id="resetConfirm">Verify and reset password</button>
+          </form>
+          <div class="reset-back-row">
+            <button type="button" class="btn btn-ghost reset-back" onclick="showLogin()">
+              <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#arrow-left"/></svg>
+              Back to sign in
+            </button>
+          </div>
+        </div>
+        <form novalidate onsubmit="event.preventDefault(); sendOtp();" id="registerPanel" style="display:none;">
         <div class="login-welcome">Create account</div>
         <h1 class="login-heading">Register</h1>
-        <div class="err-box" id="regErr"></div>
-        <label class="login-label">Full Name</label>
+        <label class="login-label" for="regFullname">Full Name</label>
         <input class="login-input" id="regFullname" type="text" placeholder="Juan Dela Cruz">
-        <label class="login-label">Institutional Email</label>
+        <label class="login-label" for="regEmail">Institutional Email</label>
         <input class="login-input" id="regEmail" type="email" placeholder="you@students.isatu.edu.ph or you@isatu.edu.ph">
-        <label class="login-label">Department / College</label>
-        <select class="login-input" id="regDept">
-          <option value="">— Select your college —</option>
-          <option>College of Engineering and Architecture</option>
-          <option>College of Computing and Informatics</option>
-          <option>College of Arts and Sciences</option>
-          <option>College of Industrial Technology</option>
-          <option>College of Education</option>
-        </select>
+        <label class="login-label" for="regDept">Department / College</label>
+        <select aria-describedby="collegeStatus" class="login-input" id="regDept" required disabled><option value="" disabled selected>Loading colleges...</option></select><p id="collegeStatus" class="form-status" role="status"></p><button type="button" class="btn btn-ghost btn-sm" onclick="loadColleges()">Reload colleges</button>
         <p style="font-size:0.8rem; color:var(--muted, #666); margin:10px 0 14px;">
           No password needed — after you verify your email, we'll generate one and send it to you.
         </p>
-        <button type="button" class="btn-sign" id="sendCodeBtn">Send Verification Code</button>
+        <div class="err-box" id="regErr" role="status"></div>
+        <button type="submit" class="btn-sign" id="sendCodeBtn">Send Verification Code</button>
         <div class="login-foot">
           Already have an account?
           <a href="#" id="showLoginLink">Sign in</a>
         </div>
-      </div>
+      </form>
 
-      <div id="otpPanel" style="display:none;">
+      <form novalidate onsubmit="event.preventDefault(); verifyAndRegister();" id="otpPanel" style="display:none;">
         <div class="login-welcome">Verify email</div>
         <h1 class="login-heading">Enter Code</h1>
-        <div class="err-box" id="otpErr"></div>
         <p style="font-size:0.84rem; color:var(--muted, #666); margin-bottom:14px;">
           We sent a 6-digit code to <strong id="otpEmailDisplay"></strong>. Enter it below.
         </p>
-        <label class="login-label">Verification Code</label>
+        <label class="login-label" for="otpCode">Verification Code</label>
         <input class="login-input" id="otpCode" type="text" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
-        <button type="button" class="btn-sign" id="verifyBtn">Verify &amp; Create Account</button>
+        <div class="err-box" id="otpErr" role="status"></div>
+        <button type="submit" class="btn-sign" id="verifyBtn">Verify &amp; Create Account</button>
         <div class="login-foot">
           <a href="#" id="resendCodeLink">Resend code</a>
           &nbsp;·&nbsp;
           <a href="#" id="editDetailsLink">Edit details</a>
         </div>
-      </div>
+      </form>
 
     </div>
   </div>
@@ -140,8 +158,6 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      const loginBtn = document.getElementById("loginBtn");
-      if (loginBtn) loginBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); login(); });
 
       const showRegisterLink = document.getElementById("showRegisterLink");
       if (showRegisterLink) showRegisterLink.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); showRegister(); });
@@ -149,11 +165,7 @@
       const showLoginLink = document.getElementById("showLoginLink");
       if (showLoginLink) showLoginLink.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); showLogin(); });
 
-      const sendCodeBtn = document.getElementById("sendCodeBtn");
-      if (sendCodeBtn) sendCodeBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); sendOtp(); });
 
-      const verifyBtn = document.getElementById("verifyBtn");
-      if (verifyBtn) verifyBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); verifyAndRegister(); });
 
       const resendCodeLink = document.getElementById("resendCodeLink");
       if (resendCodeLink) resendCodeLink.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); sendOtp(); });

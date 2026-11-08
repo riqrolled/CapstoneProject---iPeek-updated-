@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <script src="js/page-fade.js" defer blocking="render"></script>
 </head>
 <body style="visibility:hidden;">
   <nav class="navbar">
@@ -37,10 +38,10 @@
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
         <h3 style="font-size:0.9rem;" id="viewerTitle">Document Viewer</h3>
         <div style="display:flex;align-items:center;gap:8px;">
-          <button class="btn btn-ghost btn-sm" onclick="pdfPrevPage()" id="pdfPrevBtn">‹ Prev</button>
+          <button class="btn btn-ghost btn-sm" onclick="pdfPrevPage()" id="pdfPrevBtn"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#chevron-left"/></svg> Prev</button>
           <span id="pdfPageInfo" style="font-size:0.78rem;color:var(--muted);">Page — / —</span>
-          <button class="btn btn-ghost btn-sm" onclick="pdfNextPage()" id="pdfNextBtn">Next ›</button>
-          <button class="btn btn-ghost btn-sm" onclick="hidePdfViewer()">✕ Close</button>
+          <button class="btn btn-ghost btn-sm" onclick="pdfNextPage()" id="pdfNextBtn">Next <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#chevron-right"/></svg></button>
+          <button class="btn btn-ghost btn-sm" onclick="hidePdfViewer()"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#close"/></svg> Close</button>
         </div>
       </div>
       <div style="background:var(--bg);border-radius:var(--radius);overflow:hidden;text-align:center;padding:4px;">
@@ -50,7 +51,7 @@
     </div>
 
     <div class="search-wrap mb-md">
-      <span class="search-icon">🔍</span>
+      <span class="search-icon"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#search"/></svg></span>
       <input type="text" id="searchInput" placeholder="Title, author, keyword, or technology...">
     </div>
 
@@ -61,7 +62,7 @@
     <div class="research-grid" id="grid"></div>
 
     <div id="empty" class="empty-state" style="display:none;">
-      <div class="empty-state-icon">📭</div>
+      <div class="empty-state-icon"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#inbox"/></svg></div>
       <p>No research found. Try a different search.</p>
     </div>
 
@@ -72,26 +73,26 @@
   </div>
 
   <!-- Mobile PDF full-screen overlay (relocated from detail.html) -->
-  <div class="pdf-overlay" id="pdfOverlay">
+  <dialog class="pdf-overlay" id="pdfOverlay" aria-labelledby="viewerTitleOv">
     <div class="pdf-overlay-header">
       <span style="font-weight:600;font-size:0.9rem;" id="viewerTitleOv">Document Viewer</span>
       <div style="display:flex;align-items:center;gap:8px;">
-        <button class="btn btn-ghost btn-sm" onclick="pdfPrevPage()" id="pdfPrevBtnOv">‹ Prev</button>
+        <button class="btn btn-ghost btn-sm" onclick="pdfPrevPage()" id="pdfPrevBtnOv"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#chevron-left"/></svg> Prev</button>
         <span id="pdfPageInfoOv" style="font-size:0.78rem;color:var(--muted);">Page — / —</span>
-        <button class="btn btn-ghost btn-sm" onclick="pdfNextPage()" id="pdfNextBtnOv">Next ›</button>
-        <button class="btn btn-ghost btn-sm" onclick="closePdfOverlay()">✕ Close</button>
+        <button class="btn btn-ghost btn-sm" onclick="pdfNextPage()" id="pdfNextBtnOv">Next <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#chevron-right"/></svg></button>
+        <button class="btn btn-ghost btn-sm" onclick="closePdfOverlay()"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#close"/></svg> Close</button>
       </div>
     </div>
     <div class="pdf-overlay-body">
       <canvas id="pdfCanvasOverlay" style="max-width:100%;display:block;"></canvas>
     </div>
-  </div>
+  </dialog>
 
   <div class="toast-wrap" id="toasts"></div>
 
-  <script src="js/page-fade.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/keyboard.js"></script>
   <script src="js/pillnav.js"></script>
   <script src="js/motion.js"></script>
   <script src="js/library.js"></script>

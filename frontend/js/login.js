@@ -19,22 +19,28 @@ let pendingRegistration = null; // holds form data between step 1 and step 2
 /* ── Panel switching ─────────────────────────────────────────────────── */
 
 function showLogin() {
+  document.dispatchEvent(new CustomEvent("login-form-switch", { detail: { isRegister: false } }));
+  document.getElementById("resetPanel").style.display = "none";
   document.getElementById("loginPanel").style.display    = "block";
   document.getElementById("registerPanel").style.display = "none";
   document.getElementById("otpPanel").style.display       = "none";
 }
 
 function showRegister() {
+  document.dispatchEvent(new CustomEvent("login-form-switch", { detail: { isRegister: true } }));
+  document.getElementById("resetPanel").style.display = "none";
   document.getElementById("loginPanel").style.display    = "none";
   document.getElementById("registerPanel").style.display = "block";
   document.getElementById("otpPanel").style.display       = "none";
 }
 
 function showOtpStep(email) {
+  document.getElementById("resetPanel").style.display = "none";
   document.getElementById("loginPanel").style.display    = "none";
   document.getElementById("registerPanel").style.display = "none";
   document.getElementById("otpPanel").style.display       = "block";
   document.getElementById("otpEmailDisplay").textContent  = email;
+  document.getElementById("otpCode").focus();
 }
 
 /* ── Sign in ─────────────────────────────────────────────────────────── */
@@ -50,6 +56,7 @@ async function login() {
 
   if (!uid || !pwd) {
     showErr("loginErr", "Please enter your email and password.");
+    document.getElementById(!uid ? "loginUid" : "loginPwd").focus();
     return;
   }
 
@@ -91,6 +98,8 @@ async function sendOtp() {
     showErr("regErr", "Please fill in your full name and institutional email.");
     return;
   }
+
+  if (!dept) { showErr("regErr", "Please select your college."); return; }
 
   // Non-secret details only — NO password is collected or chosen here.
   // The server generates one after OTP verification and emails it.
@@ -152,6 +161,7 @@ async function verifyAndRegister() {
       `Your account is ready for ${registeredEmail}. We sent your password to your email — you can now sign in.`
     );
   } catch (e) {
+    if (e.status === 400 && /college/i.test(e.message)) { showRegister(); showErr("regErr", e.message); await loadColleges(); }
     showErr("otpErr", e.message || "Could not verify the code or create your account.");
   } finally {
     btn.disabled = false;
@@ -170,3 +180,55 @@ function showErr(boxId, msg) {
   el.textContent   = msg;
   el.style.display = "block";
 }
+async function loadColleges() {
+  const select = document.getElementById("regDept"); const previous = select.value;
+  const status = document.getElementById("collegeStatus");
+  status.textContent = "Loading colleges...";
+  status.classList.remove("is-error");
+  select.disabled = true; select.replaceChildren(new Option("Loading colleges...", ""));
+  try {
+    const colleges = await apiColleges();
+    select.replaceChildren(new Option("Select your college", "")); select.options[0].disabled = true;
+    colleges.forEach(c => select.add(new Option(`${c.code} - ${c.name}`, c.name)));
+    select.value = colleges.some(c => c.name === previous) ? previous : "";
+    select.disabled = !colleges.length;
+    status.textContent = colleges.length ? "" : "No colleges available. Please try again later.";
+    status.classList.toggle("is-error", !colleges.length);
+  } catch (error) { select.replaceChildren(new Option("Colleges unavailable", "")); status.textContent = error.message; status.classList.add("is-error"); }
+}
+let resetEmail = null;
+function showReset() {
+  ["loginPanel", "registerPanel", "otpPanel"].forEach(id => document.getElementById(id).style.display = "none");
+  document.getElementById("resetPanel").style.display = "block";
+  document.getElementById("resetEmail").focus();
+}
+async function requestReset() {
+  const email = document.getElementById("resetEmail");
+  if (!email.value.trim() || !email.reportValidity()) { showErr("resetErr", "Please enter your school email."); return; }
+  const btn = document.getElementById("resetRequest"); btn.disabled = true; btn.textContent = "Sending...";
+  document.getElementById("resetConfirm").disabled = true;
+  resetEmail = null;
+  try {
+    const value = email.value.trim(); const result = await apiRequestPasswordReset(value);
+    resetEmail = value; document.getElementById("resetCode").value = "";
+    document.getElementById("resetCodePane").style.display = "block";
+    document.getElementById("resetCode").focus();
+    showErr("resetErr", result.message);
+  } catch (error) { showErr("resetErr", error.message); }
+  finally { btn.disabled = false; btn.textContent = "Send / resend reset code"; document.getElementById("resetConfirm").disabled = !resetEmail; }
+}
+async function confirmReset() {
+  const code = document.getElementById("resetCode").value.trim();
+  if (!resetEmail || resetEmail !== document.getElementById("resetEmail").value.trim()) { showErr("resetErr", "Request a code for this email first."); return; }
+  if (!/^\d{6}$/.test(code)) { showErr("resetErr", "Enter the 6-digit code."); return; }
+  const btn = document.getElementById("resetConfirm"); btn.disabled = true; btn.textContent = "Resetting...";
+  document.getElementById("resetRequest").disabled = true;
+  try {
+    await apiConfirmPasswordReset(resetEmail, code); resetEmail = null;
+    document.getElementById("resetCodePane").style.display = "none";
+    showLogin(); showErr("loginErr", "Check your email for your new password.");
+  } catch (error) { showErr("resetErr", error.message); }
+  finally { btn.disabled = false; btn.textContent = "Verify and reset password"; document.getElementById("resetRequest").disabled = false; }
+}
+loadColleges();
+if (new URLSearchParams(window.location.search).has("expired")) showErr("loginErr", "Your session expired. Please log in again.");

@@ -17,26 +17,67 @@
 
 const API_BASE = "http://localhost:8000";
 
+/* Shared local outline SVG set; icons are decorative beside named controls. */
+function createUiIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const attributes = {
+    class: "ui-icon", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+    "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round",
+    "aria-hidden": "true", focusable: "false",
+  };
+  Object.entries(attributes).forEach(([key, value]) => svg.setAttribute(key, value));
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `icons.svg#${name}`);
+  svg.appendChild(use);
+  return svg;
+}
+
+function uiIconMarkup(name) {
+  return createUiIcon(name).outerHTML;
+}
+
+function createActionIconButton(icon, tooltip, label = tooltip) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "action-icon-btn";
+  button.title = tooltip;
+  button.dataset.tooltip = tooltip;
+  button.setAttribute("aria-label", label);
+  button.appendChild(createUiIcon(icon));
+  return button;
+}
+
+function createSignOutButton() {
+  const button = createActionIconButton("logout", "Sign out");
+  button.classList.add("sign-out-btn");
+  button.addEventListener("click", async () => {
+    try { await apiLogout(); } catch {}
+    sessionStorage.clear();
+    window.location.replace("index.html");
+  });
+  return button;
+}
+
 /* ── Nav link sets ──────────────────────────────────────────────────── */
 const NAV_LINKS = {
   student: [
-    { href: "browse.html",  label: "Browse Research",  id: "browse",    icon: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" },
-    { href: "upload.html",  label: "Submit Proposal",  id: "upload",    icon: "M12 4v16m8-8H4" },
-    { href: "my-submissions.html", label: "My Submissions", id: "my-submissions", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
+    { href: "browse.html",  label: "Browse Research",  id: "browse",    icon: "browse" },
+    { href: "upload.html",  label: "Submit Proposal",  id: "upload",    icon: "upload" },
+    { href: "my-submissions.html", label: "My Submissions", id: "my-submissions", icon: "my-submissions" },
   ],
   faculty: [
-    { href: "browse.html",  label: "Browse Research",  id: "browse",    icon: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" },
-    { href: "upload.html",  label: "Submit Proposal",  id: "upload",    icon: "M12 4v16m8-8H4" },
-    { href: "my-submissions.html", label: "My Submissions", id: "my-submissions", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
+    { href: "browse.html",  label: "Browse Research",  id: "browse",    icon: "browse" },
+    { href: "upload.html",  label: "Submit Proposal",  id: "upload",    icon: "upload" },
+    { href: "my-submissions.html", label: "My Submissions", id: "my-submissions", icon: "my-submissions" },
   ],
   librarian: [
-    { href: "dashboard.html", label: "Dashboard",     id: "dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-    { href: "review.html",    label: "Review Queue",  id: "review",    icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
-    { href: "library.html",   label: "Library Terminal", id: "library", icon: "M2 4h6a4 4 0 014 4v12a3 3 0 00-3-3H2zM22 4h-6a4 4 0 00-4 4v12a3 3 0 013-3h7z" },
-    { href: "browse.html",    label: "Browse",        id: "browse",    icon: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" },
-    { href: "upload.html",    label: "Upload",        id: "upload",    icon: "M12 4v16m8-8H4" },
-    { href: "my-submissions.html", label: "My Submissions", id: "my-submissions", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
-    { href: "users.html",      label: "Users",           id: "users",      icon: "M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 100-4 4 4 0 000 4zm6-4a3 3 0 11-3-3" },
+    { href: "dashboard.html", label: "Dashboard",     id: "dashboard", icon: "dashboard" },
+    { href: "review.html",    label: "Review Queue",  id: "review",    icon: "review" },
+    { href: "library.html",   label: "Library Terminal", id: "library", icon: "library" },
+    { href: "browse.html",    label: "Browse",        id: "browse",    icon: "browse" },
+    { href: "upload.html",    label: "Upload",        id: "upload",    icon: "upload" },
+    { href: "my-submissions.html", label: "My Submissions", id: "my-submissions", icon: "my-submissions" },
+    { href: "users.html",      label: "Users",           id: "users",      icon: "users" },
   ],
 };
 
@@ -49,6 +90,22 @@ const NAV_LINKS = {
 let _kioskGuardTimer  = null;
 let _kioskLastState   = null;
 let _navIdentity      = null;   // {avatarEl, rolePill} kept alive across hidden re-renders
+let _renderedNavState = null;
+
+// Presentation only: keep the last verified session's header visible while the
+// new document repeats its auth/kiosk checks. Never use this for route access.
+function restoreNavPresentation() {
+  if (!_getToken() || !document.querySelector(".navbar")) return;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem("ipeek_nav") || "null");
+    if (!saved || !Object.hasOwn(NAV_LINKS, saved.role)) return;
+    const avatar = document.getElementById("avatarEl");
+    const role = document.getElementById("rolePill");
+    if (avatar) avatar.textContent = saved.initials;
+    if (role) role.textContent = saved.label;
+    _renderNav(saved.role, { hidden: saved.hidden });
+  } catch { /* Storage unavailable: normal authenticated initialization follows. */ }
+}
 
 function applyNav(role) {
   _kioskGuard(role).catch(() => _renderNav(role, { hidden: false }));
@@ -98,25 +155,12 @@ function _renderNav(role, opts) {
   const hidden = !!(opts && opts.hidden);
   const container = document.querySelector(".nav-links");
   if (!container) return;
+  const state = `${role}:${hidden}`;
+  // Auth confirmation must not replace the restored pill or replay its motion.
+  if (_renderedNavState === state) return;
+  _renderedNavState = state;
   const links   = NAV_LINKS[role] || NAV_LINKS.student;
   const current = window.location.pathname.split("/").pop();
-
-  /* ── SVG icon helper ────────────────────────────────────── */
-  function navIcon(d) {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("width", "16");
-    svg.setAttribute("height", "16");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("fill", "none");
-    svg.setAttribute("stroke", "currentColor");
-    svg.setAttribute("stroke-width", "2");
-    svg.setAttribute("stroke-linecap", "round");
-    svg.setAttribute("stroke-linejoin", "round");
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", d);
-    svg.appendChild(path);
-    return svg;
-  }
 
   /* ── Desktop pill nav ──────────────────────────────────── */
   if (hidden) {
@@ -133,7 +177,7 @@ function _renderNav(role, opts) {
       a.className   = `pill${href === current ? " is-active" : ""}`;
       a.href        = href;
       if (target) a.target = target;
-      if (icon) a.appendChild(navIcon(icon));
+      if (icon) a.appendChild(createUiIcon(icon));
       const span = document.createElement("span");
       span.textContent = label;
       a.appendChild(span);
@@ -168,30 +212,29 @@ function _renderNav(role, opts) {
       bellBtn.className = "nav-icon-btn";
       bellBtn.title = "Notifications";
       bellBtn.setAttribute("aria-label", "Notifications");
-      const bellSvg = navIcon("M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0");
+      const bellSvg = createUiIcon("bell");
       bellBtn.appendChild(bellSvg);
 
       const dropdown = document.createElement("div");
       dropdown.className = "nav-dropdown";
-      dropdown.innerHTML = '<div class="notif-header">Notifications</div><div class="notif-empty">No new notifications</div>';
+      wireNotifications(bellBtn, dropdown);
 
-      bellBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        dropdown.classList.toggle("open");
-      });
+      wireNotificationDisclosure(bellBtn, dropdown);
 
       notifWrapper.appendChild(bellBtn);
       notifWrapper.appendChild(dropdown);
       navRight.appendChild(notifWrapper);
 
       /* Close dropdown on outside click */
-      document.addEventListener("click", () => dropdown.classList.remove("open"));
+
 
       /* Profile pill */
       if (existingAvatar && existingRole) {
         const wrapper = document.createElement("a");
         wrapper.className = "profile-pill";
         wrapper.href = "profile.html";
+        existingAvatar.removeAttribute("href");
+        existingAvatar.removeAttribute("tabindex");
         wrapper.appendChild(existingAvatar);
         wrapper.appendChild(existingRole);
         navRight.appendChild(wrapper);
@@ -199,18 +242,7 @@ function _renderNav(role, opts) {
     }
 
     /* Icon logout button — always kept, even while locked */
-    const logoutBtn = document.createElement("button");
-    logoutBtn.className = "nav-icon-btn";
-    logoutBtn.title = "Sign Out";
-    logoutBtn.setAttribute("aria-label", "Sign Out");
-    const logoutSvg = navIcon("M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9");
-    logoutBtn.appendChild(logoutSvg);
-    logoutBtn.addEventListener("click", async () => {
-      try { await apiLogout(); } catch {}
-      sessionStorage.clear();
-      window.location.replace("index.html");
-    });
-    navRight.appendChild(logoutBtn);
+    navRight.appendChild(createSignOutButton());
   }
 
   /* ── Mobile header ─────────────────────────────────────── */
@@ -223,8 +255,11 @@ function _renderNav(role, opts) {
   mobileHeader.innerHTML = "";
   const mBrand = document.createElement("div");
   mBrand.className = "nav-brand";
-  mBrand.innerHTML = '<div class="nav-logo">i</div> Research Repository';
+  mBrand.innerHTML = '<div class="nav-logo">i</div><span>Research Repository</span>';
   mobileHeader.appendChild(mBrand);
+  const mobileActions = document.createElement("div");
+  mobileActions.className = "mobile-header-actions";
+  mobileHeader.appendChild(mobileActions);
 
   if (!hidden) {
     const avatarEl = document.getElementById("avatarEl") || (_navIdentity && _navIdentity.avatarEl);
@@ -236,10 +271,21 @@ function _renderNav(role, opts) {
     mProfile.href = "profile.html";
     mProfile.textContent = initials;
     mProfile.title = `${roleText} — View Profile`;
-    mobileHeader.appendChild(mProfile);
+    mobileActions.appendChild(mProfile);
   }
 
   /* ── Bottom tab bar ────────────────────────────────────── */
+  if (!hidden) {
+    const wrapper = document.createElement("div"); wrapper.className = "nav-notif-wrapper";
+    const bell = document.createElement("button"); bell.className = "nav-icon-btn";
+    bell.setAttribute("aria-label", "Notifications");
+    bell.appendChild(createUiIcon("bell"));
+    const dropdown = document.createElement("div"); dropdown.className = "nav-dropdown";
+    wireNotifications(bell, dropdown);
+    wireNotificationDisclosure(bell, dropdown);
+    wrapper.append(bell, dropdown); mobileActions.appendChild(wrapper);
+  }
+  mobileActions.appendChild(createSignOutButton());
   let bottomBar = document.querySelector(".bottom-tab-bar");
   if (!bottomBar) {
     bottomBar = document.createElement("div");
@@ -248,6 +294,7 @@ function _renderNav(role, opts) {
   }
   bottomBar.innerHTML = "";
 
+  document.body.classList.add("nav-ready");
   if (hidden) return;
 
   const bUl = document.createElement("ul");
@@ -258,7 +305,7 @@ function _renderNav(role, opts) {
     a.className   = `pill${href === current ? " is-active" : ""}`;
     a.href        = href;
     if (target) a.target = target;
-    if (icon) a.appendChild(navIcon(icon));
+    if (icon) a.appendChild(createUiIcon(icon));
     const span = document.createElement("span");
     const shortLabels = {
       "Browse Research": "Browse",
@@ -278,6 +325,18 @@ function _renderNav(role, opts) {
   bottomBar.appendChild(bUl);
 
   if (typeof initPillNav === "function") initPillNav(bottomBar);
+}
+
+function saveNavPresentation() {
+  if (!_renderedNavState || !_getToken()) return;
+  const [role, hidden] = _renderedNavState.split(":");
+  try {
+    sessionStorage.setItem("ipeek_nav", JSON.stringify({
+      role, hidden: hidden === "true",
+      initials: document.getElementById("avatarEl")?.textContent || "",
+      label: document.getElementById("rolePill")?.textContent || "",
+    }));
+  } catch { /* Navigation also works when session storage is unavailable. */ }
 }
 
 function applyProfilePill() {
@@ -317,37 +376,29 @@ function apiAuthHeaderForPdf() {
    one specific session by its sid (dashboard lock/unlock control). */
 
 async function apiKioskStatus() {
-  const r = await fetch(`${API_BASE}/kiosk/status`, { headers: _authHeaders() });
+  const r = await _apiFetch(`${API_BASE}/kiosk/status`, { headers: _authHeaders() });
   const d = await r.json();
   if (!r.ok) throw new Error(d.detail || "Kiosk status unavailable.");
   return d;
 }
 
 async function apiKioskActivate() {
-  const r = await fetch(`${API_BASE}/kiosk/activate`, { method: "POST", headers: _authHeaders() });
+  const r = await _apiFetch(`${API_BASE}/kiosk/activate`, { method: "POST", headers: _authHeaders() });
   const d = await r.json();
   if (!r.ok) throw new Error(d.detail || "Could not activate this terminal session.");
   return d;
 }
 
-async function apiKioskSetLock(locked) {
-  const r = await fetch(`${API_BASE}/kiosk/${locked ? "lock" : "unlock"}`, {
-    method: "POST", headers: _authHeaders(),
-  });
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.detail || "Could not update the session lock.");
-  return d;
-}
 
 async function apiKioskSessions() {
-  const r = await fetch(`${API_BASE}/kiosk/sessions`, { headers: _authHeaders() });
+  const r = await _apiFetch(`${API_BASE}/kiosk/sessions`, { headers: _authHeaders() });
   const d = await r.json();
   if (!r.ok) throw new Error(d.detail || "Could not load terminal sessions.");
   return d;
 }
 
 async function apiKioskSetLockFor(sid, locked) {
-  const r = await fetch(
+  const r = await _apiFetch(
     `${API_BASE}/kiosk/sessions/${encodeURIComponent(sid)}/${locked ? "lock" : "unlock"}`,
     { method: "POST", headers: _authHeaders() }
   );
@@ -360,7 +411,7 @@ async function apiKioskSetLockFor(sid, locked) {
    pagehide so a closed terminal drops out of the dashboard tracker.
    keepalive lets the request survive the page unload. */
 async function apiKioskDeactivate() {
-  const r = await fetch(`${API_BASE}/kiosk/deactivate`, {
+  const r = await _apiFetch(`${API_BASE}/kiosk/deactivate`, {
     method: "POST", headers: _authHeaders(), keepalive: true,
   });
   const d = await r.json();
@@ -371,7 +422,7 @@ async function apiKioskDeactivate() {
 /* Librarian-only: deletes a session row from the tracker (terminate
    button on the dashboard's Library Terminal Sessions card). */
 async function apiKioskTerminate(sid) {
-  const r = await fetch(
+  const r = await _apiFetch(
     `${API_BASE}/kiosk/sessions/${encodeURIComponent(sid)}`,
     { method: "DELETE", headers: _authHeaders() }
   );
@@ -387,7 +438,7 @@ async function apiLogin(username, password) {
   body.append("username", username);
   body.append("password", password);
 
-  const r = await fetch(`${API_BASE}/auth/login`, {
+  const r = await _apiFetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -395,16 +446,18 @@ async function apiLogin(username, password) {
   const d = await r.json();
   if (!r.ok) throw new Error(d.detail || "Login failed.");
 
+  sessionStorage.removeItem("ipeek_nav");
   sessionStorage.setItem("ipeek_token", d.access_token);
   return { success: true, role: d.role, full_name: d.fullname };
 }
 
-async function apiLogout() {
+function apiLogout() {
+  sessionStorage.clear();
   return { success: true };
 }
 
 async function apiMe() {
-  const r = await fetch(`${API_BASE}/auth/me`, { headers: _authHeaders() });
+  const r = await _apiFetch(`${API_BASE}/auth/me`, { headers: _authHeaders() });
   const d = await r.json();
   if (!r.ok) throw new Error(d.detail || "Not logged in.");
   return {
@@ -414,26 +467,26 @@ async function apiMe() {
     full_name: d.fullname,
     email:     d.email,
     contact:   d.contact,
-    department: d.department,
+    department: d.department, college_id: d.college_id, college_code: d.college_code,
   };
 }
 
 async function apiUpdateProfile(fullName, email, contact) {
-  const r = await fetch(`${API_BASE}/auth/me`, {
+  const r = await _apiFetch(`${API_BASE}/auth/me`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ..._authHeaders() },
-    body: JSON.stringify({ fullname: fullName, email, contact }),
+    body: JSON.stringify({ fullname: fullName, contact }),
   });
   const d = await r.json();
   if (!r.ok) throw new Error(d.detail || "Failed to update profile.");
   return {
     user_id: d.id, username: d.username, role: d.role,
-    full_name: d.fullname, email: d.email, contact: d.contact, department: d.department,
+    full_name: d.fullname, email: d.email, contact: d.contact, department: d.department, college_id: d.college_id, college_code: d.college_code,
   };
 }
 
 async function apiUpdatePassword(currentPassword, newPassword) {
-  const r = await fetch(`${API_BASE}/auth/password`, {
+  const r = await _apiFetch(`${API_BASE}/auth/password`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ..._authHeaders() },
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
@@ -450,7 +503,7 @@ async function apiUpdatePassword(currentPassword, newPassword) {
    a client-supplied role even if one were sent. */
 
 async function apiRequestOtp(email) {
-  const r = await fetch(`${API_BASE}/auth/register/request-otp`, {
+  const r = await _apiFetch(`${API_BASE}/auth/register/request-otp`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
@@ -461,7 +514,7 @@ async function apiRequestOtp(email) {
 }
 
 async function apiVerifyOtp(email, code) {
-  const r = await fetch(`${API_BASE}/auth/register/verify-otp`, {
+  const r = await _apiFetch(`${API_BASE}/auth/register/verify-otp`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, code }),
@@ -474,7 +527,7 @@ async function apiVerifyOtp(email, code) {
 async function apiRegister({ email, fullname, department }) {
   // No "password" field is ever sent — the server generates one after
   // OTP verification and emails it to the verified address.
-  const r = await fetch(`${API_BASE}/auth/register`, {
+  const r = await _apiFetch(`${API_BASE}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, fullname, department: department || null }),
@@ -495,7 +548,7 @@ async function apiIngestPreview(file, formData) {
   fd.append("members", formData.members || "");
   fd.append("abstract", formData.abstract || "");
 
-  const r = await fetch(`${API_BASE}/repository/upload/preview`, {
+  const r = await _apiFetch(`${API_BASE}/repository/upload/preview`, {
     method: "POST",
     headers: _authHeaders(),
     body: fd,
@@ -506,7 +559,7 @@ async function apiIngestPreview(file, formData) {
 }
 
 async function apiIngestConfirm(previewId, finalValues, publicPdfConsent) {
-  const r = await fetch(`${API_BASE}/repository/upload/confirm`, {
+  const r = await _apiFetch(`${API_BASE}/repository/upload/confirm`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ..._authHeaders() },
     body: JSON.stringify({
@@ -523,7 +576,7 @@ async function apiIngestConfirm(previewId, finalValues, publicPdfConsent) {
 /* ── RAG Analysis ────────────────────────────────────────────────────── */
 
 async function apiSimilarity(researchId) {
-  const r = await fetch(`${API_BASE}/ai/${researchId}/similarity`, {
+  const r = await _apiFetch(`${API_BASE}/ai/${researchId}/similarity`, {
     method: "POST", headers: _authHeaders(),
   });
   const d = await r.json();
@@ -532,7 +585,7 @@ async function apiSimilarity(researchId) {
 }
 
 async function apiSummary(researchId) {
-  const r = await fetch(`${API_BASE}/ai/${researchId}/summary`, {
+  const r = await _apiFetch(`${API_BASE}/ai/${researchId}/summary`, {
     method: "POST", headers: _authHeaders(),
   });
   const d = await r.json();
@@ -541,7 +594,7 @@ async function apiSummary(researchId) {
 }
 
 async function apiGaps(researchId) {
-  const r = await fetch(`${API_BASE}/ai/${researchId}/gaps`, {
+  const r = await _apiFetch(`${API_BASE}/ai/${researchId}/gaps`, {
     method: "POST", headers: _authHeaders(),
   });
   const d = await r.json();
@@ -550,7 +603,7 @@ async function apiGaps(researchId) {
 }
 
 async function apiImrad(researchId) {
-  const r = await fetch(`${API_BASE}/ai/${researchId}/imrad`, {
+  const r = await _apiFetch(`${API_BASE}/ai/${researchId}/imrad`, {
     method: "POST", headers: _authHeaders(),
   });
   const d = await r.json();
@@ -559,7 +612,7 @@ async function apiImrad(researchId) {
 }
 
 async function apiRefineAnalysis(researchId, query, target) {
-  const r = await fetch(`${API_BASE}/ai/${researchId}/refine`, {
+  const r = await _apiFetch(`${API_BASE}/ai/${researchId}/refine`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ..._authHeaders() },
     body: JSON.stringify({ query, target }),
@@ -569,16 +622,6 @@ async function apiRefineAnalysis(researchId, query, target) {
   return d;
 }
 
-async function apiChat(question, history = []) {
-  const r = await fetch(`${API_BASE}/ai/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ..._authHeaders() },
-    body: JSON.stringify({ question, history }),
-  });
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.detail || "Chat failed.");
-  return d;
-}
 
 /* ── Repository Data ─────────────────────────────────────────────────── */
 
@@ -592,7 +635,7 @@ function _mapResearch(item) {
     school_year:      item.year ? String(item.year) : "Unknown",
     college:          item.department,
     department:       item.department,
-    keywords:         "",
+    college_id:       item.college_id,
     abstract:         item.abstract || "",
     source:           item.source_stem,
     source_stem:      item.source_stem,
@@ -603,15 +646,18 @@ function _mapResearch(item) {
   };
 }
 
-async function apiDocuments() {
-  const r = await fetch(`${API_BASE}/repository/browse`, { headers: _authHeaders() });
+async function apiDocuments(filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.college) params.set("college_id", filters.college);
+  if (filters.year && filters.year !== "all") params.set("year", filters.year);
+  const r = await _apiFetch(`${API_BASE}/repository/browse?${params}`, { headers: _authHeaders() });
   const d = await r.json();
   if (!r.ok) throw new Error(d.detail || "Failed to load documents.");
   return { documents: d.map(_mapResearch) };
 }
 
 async function apiDocumentDetail(source) {
-  const r = await fetch(`${API_BASE}/repository/${encodeURIComponent(source)}/detail`, {
+  const r = await _apiFetch(`${API_BASE}/repository/${encodeURIComponent(source)}/detail`, {
     headers: _authHeaders(),
   });
   const d = await r.json();
@@ -620,8 +666,10 @@ async function apiDocumentDetail(source) {
 }
 
 async function apiStatus() {
-  return { status: "ok", chunks_indexed: 0, message: "" };
+  return _apiJson("/admin/repository/status");
 }
+
+const apiDashboardStats = () => _apiJson("/admin/dashboard");
 
 function apiPdfUrl(source) {
   return `${API_BASE}/repository/${encodeURIComponent(source)}/pdf`;
@@ -638,7 +686,7 @@ function apiPreviewPdfUrl(previewId) {
  */
 async function viewPdfInNewTab(url) {
   try {
-    const r = await fetch(url, { headers: _authHeaders() });
+    const r = await _apiFetch(url, { headers: _authHeaders() });
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
       throw new Error(d.detail || "Could not load PDF.");
@@ -652,7 +700,7 @@ async function viewPdfInNewTab(url) {
 }
 
 async function apiValidateResearch(researchId, action, comments) {
-  const r = await fetch(`${API_BASE}/admin/repository/${researchId}/validate`, {
+  const r = await _apiFetch(`${API_BASE}/admin/repository/${researchId}/validate`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ..._authHeaders() },
     body: JSON.stringify({ approve: action === "validated", feedback_message: comments || null }),
@@ -663,7 +711,7 @@ async function apiValidateResearch(researchId, action, comments) {
 }
 
 async function apiDeletePaper(id) {
-  const r = await fetch(`${API_BASE}/admin/repository/${id}`, {
+  const r = await _apiFetch(`${API_BASE}/admin/repository/${id}`, {
     method: "DELETE", headers: _authHeaders(),
   });
   const d = await r.json();
@@ -672,14 +720,14 @@ async function apiDeletePaper(id) {
 }
 
 async function apiSubmissions() {
-  const r = await fetch(`${API_BASE}/admin/repository`, { headers: _authHeaders() });
+  const r = await _apiFetch(`${API_BASE}/admin/repository`, { headers: _authHeaders() });
   const d = await r.json();
   if (!r.ok) throw new Error(d.detail || "Failed to fetch submissions.");
   return { submissions: d.map(_mapResearch) };
 }
 
 async function apiMySubmissions() {
-  const r = await fetch(`${API_BASE}/repository/my-uploads`, { headers: _authHeaders() });
+  const r = await _apiFetch(`${API_BASE}/repository/my-uploads`, { headers: _authHeaders() });
   const d = await r.json();
   if (!r.ok) throw new Error(d.detail || "Failed to fetch your submissions.");
   return { submissions: d.map(_mapResearch) };
@@ -690,7 +738,7 @@ async function apiMySubmissions() {
    submission history is ever removed. Librarian accounts never appear. */
 
 async function apiListUsers(includeInactive = false) {
-  const r = await fetch(
+  const r = await _apiFetch(
     `${API_BASE}/admin/users?include_inactive=${includeInactive ? "true" : "false"}`,
     { headers: _authHeaders() }
   );
@@ -700,7 +748,7 @@ async function apiListUsers(includeInactive = false) {
 }
 
 async function apiDeactivateUser(userId) {
-  const r = await fetch(`${API_BASE}/admin/users/${userId}/deactivate`, {
+  const r = await _apiFetch(`${API_BASE}/admin/users/${userId}/deactivate`, {
     method: "PATCH", headers: _authHeaders(),
   });
   const d = await r.json();
@@ -709,7 +757,7 @@ async function apiDeactivateUser(userId) {
 }
 
 async function apiReactivateUser(userId) {
-  const r = await fetch(`${API_BASE}/admin/users/${userId}/reactivate`, {
+  const r = await _apiFetch(`${API_BASE}/admin/users/${userId}/reactivate`, {
     method: "PATCH", headers: _authHeaders(),
   });
   const d = await r.json();
@@ -718,7 +766,7 @@ async function apiReactivateUser(userId) {
 }
 
 async function apiAdminCreateUser({ fullname, email, department }) {
-  const r = await fetch(`${API_BASE}/admin/users`, {
+  const r = await _apiFetch(`${API_BASE}/admin/users`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ..._authHeaders() },
     body: JSON.stringify({ fullname, email, department: department || null }),
@@ -738,4 +786,107 @@ function toast(msg, type = "info", duration = 3500) {
   el.textContent = msg;
   wrap.appendChild(el);
   setTimeout(() => el.remove(), duration);
+}
+async function _apiFetch(url, options = {}) {
+  const response = await fetch(url, options);
+  if (response.ok) return response;
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401 && new Headers(options.headers || {}).has("Authorization")) {
+    sessionStorage.clear(); window.location.replace("index.html?expired=1");
+  }
+  let message = typeof data.detail === "string" ? data.detail : "Request failed. Please try again.";
+  if (response.status === 422) message = "Please check the form values.";
+  if (response.status === 429) message = "Too many requests. Please wait a minute and try again.";
+  const error = new Error(message); error.status = response.status; throw error;
+}
+async function _apiJson(path, method = "GET", body, authenticated = true) {
+  const response = await _apiFetch(`${API_BASE}${path}`, {
+    method, headers: { ...(authenticated ? _authHeaders() : {}), ...(body !== undefined ? {"Content-Type": "application/json"} : {}) },
+    ...(body !== undefined ? {body: JSON.stringify(body)} : {}),
+  });
+  return response.json();
+}
+const apiColleges = () => _apiJson("/auth/colleges", "GET", undefined, false);
+const apiRequestPasswordReset = email => _apiJson("/auth/password/reset/request-otp", "POST", {email}, false);
+const apiConfirmPasswordReset = (email, code) => _apiJson("/auth/password/reset/confirm", "POST", {email, code}, false);
+const apiRepositoryFilters = () => _apiJson("/repository/filters");
+const apiNotifications = () => _apiJson("/notifications?limit=20");
+const apiMarkNotificationRead = id => _apiJson(`/notifications/${id}/read`, "PATCH");
+const apiMarkAllNotificationsRead = () => _apiJson("/notifications/read-all", "POST");
+const apiBulkDeletePapers = ids => _apiJson("/admin/repository/bulk-delete", "POST", ids);
+
+function wireNotifications(bell, dropdown) {
+  dropdown.setAttribute("aria-live", "polite");
+  dropdown.addEventListener("click", event => event.stopPropagation());
+  const refresh = async () => {
+    if (dropdown.contains?.(document.activeElement)) dropdown.focus?.();
+    dropdown.textContent = "Loading notifications...";
+    try {
+      const data = await apiNotifications();
+      bell.classList.toggle("has-unread", data.unread_count > 0);
+      bell.setAttribute("aria-label", `Notifications: ${data.unread_count} unread`);
+      dropdown.replaceChildren();
+      const heading = document.createElement("div"); heading.className = "notif-header";
+      heading.textContent = `Notifications (${data.unread_count} unread)`; dropdown.appendChild(heading);
+      const action = (label, run) => {
+        const button = document.createElement("button"); button.className = "btn btn-ghost btn-sm"; button.textContent = label;
+        button.onclick = async () => {
+          button.disabled = true;
+          try { await run(); await refresh(); toast("Notifications marked read.", "success"); }
+          catch (error) { toast(error.message, "error"); button.disabled = false; }
+        }; return button;
+      };
+      if (data.unread_count) dropdown.appendChild(action("Mark all read", apiMarkAllNotificationsRead));
+      if (!data.items.length) { const empty = document.createElement("div"); empty.className = "notif-empty"; empty.textContent = "No notifications yet."; dropdown.appendChild(empty); }
+      data.items.forEach(item => {
+        const row = document.createElement("div"); row.className = "notification-item";
+        const message = document.createElement(item.research_id == null ? "p" : "a"); message.textContent = item.message;
+        if (item.research_id != null) message.href = "my-submissions.html";
+        row.appendChild(message);
+        if (item.status !== "read") row.appendChild(action("Mark read", () => apiMarkNotificationRead(item.id)));
+        dropdown.appendChild(row);
+      });
+    } catch (error) {
+      dropdown.textContent = error.message;
+      const retry = document.createElement("button"); retry.textContent = "Retry"; retry.className = "btn btn-ghost btn-sm"; retry.onclick = refresh; dropdown.appendChild(retry);
+    }
+  }; dropdown.refreshNotifications = refresh; refresh();
+}
+
+async function apiPdfData(source) {
+  const response = await _apiFetch(apiPdfUrl(source), {headers: _authHeaders()});
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+function wireNotificationDisclosure(bell, dropdown) {
+  dropdown.tabIndex = -1;
+  dropdown.setAttribute('role', 'region');
+  dropdown.setAttribute('aria-label', 'Notifications');
+  bell.setAttribute('aria-expanded', 'false');
+  const close = (restore = false) => {
+    dropdown.classList.remove('open');
+    bell.setAttribute('aria-expanded', 'false');
+    if (restore && bell.isConnected) bell.focus();
+  };
+  bell.addEventListener('click', event => {
+    event.stopPropagation();
+    if (dropdown.classList.contains('open')) { close(true); return; }
+    dropdown.classList.add('open');
+    bell.setAttribute('aria-expanded', 'true');
+    dropdown.focus();
+    dropdown.refreshNotifications();
+  });
+  const escape = event => {
+    if (event.key === 'Escape' && !event.defaultPrevented && dropdown.classList.contains('open')) {
+      event.preventDefault(); event.stopPropagation(); close(true);
+    }
+  };
+  bell.addEventListener('keydown', escape);
+  dropdown.addEventListener('keydown', escape);
+  document.addEventListener('click', event => {
+    if (!dropdown.contains(event.target) && !bell.contains(event.target)) close();
+  });
+  document.addEventListener('focusin', event => {
+    if (!dropdown.contains(event.target) && !bell.contains(event.target)) close();
+  });
 }

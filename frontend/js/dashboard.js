@@ -1,243 +1,218 @@
-let currentUserRole = null;
-
+const byDashboardId = id => document.getElementById(id);
+const dashboardCounts = new Intl.NumberFormat();
+const validCount = value => Number.isInteger(value) && value >= 0;
+const displayCount = value => validCount(value) ? dashboardCounts.format(value) : 'Unavailable';
+function dashboardNode(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function dashboardLoading(container, label, rows = 0) {
+  // Keep the measured panel size during refreshes.
+  const height = container.getBoundingClientRect().height;
+  if (height) container.style.minHeight = height + 'px';
+  container.replaceChildren(dashboardNode('span', 'dashboard-sr-only', label));
+  const placeholder = dashboardNode('span', rows ? 'dashboard-skeleton-lines' : 'dashboard-skeleton');
+  placeholder.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < rows; i++) {
+    const row = dashboardNode('span', 'dashboard-skeleton-row');
+    row.style.display = 'block';
+    row.append(dashboardNode('span', 'dashboard-skeleton dashboard-skeleton-line'), dashboardNode('span', 'dashboard-skeleton dashboard-skeleton-line'));
+    placeholder.appendChild(row);
+  }
+  container.appendChild(placeholder);
+}
+function dashboardTimestamp(value) {
+  if (!value) return NaN;
+  // Backend DateTime columns store UTC, including ISO strings without a timezone.
+  const normalized = /T/.test(value) && !/(Z|[+-]\d{2}:\d{2})$/i.test(value) ? value + 'Z' : value;
+  return new Date(normalized).getTime();
+}
+function dashboardDate(value, time = false) {
+  const stamp = dashboardTimestamp(value);
+  return Number.isFinite(stamp) ? new Intl.DateTimeFormat(undefined, {dateStyle:'medium', ...(time ? {timeStyle:'short'} : {})}).format(stamp) : 'Date unavailable';
+}
+function panelMessage(container, text, retry) {
+  const message = dashboardNode('p', 'dashboard-panel-message', text);
+  message.setAttribute('role', 'status');
+  container.replaceChildren(message);
+  if (retry) {
+    const button = dashboardNode('button', 'btn btn-ghost btn-sm', 'Retry');
+    button.type = 'button';
+    button.addEventListener('click', retry);
+    container.appendChild(button);
+  }
+}
 async function initPage() {
   try {
     const me = await apiMe();
-    if (me.role !== "librarian") {
-      window.location.replace("browse.html"); return;
-    }
-    currentUserRole = me.role;
+    if (me.role !== 'librarian') { location.replace('browse.html'); return; }
     applyNav(me.role);
-    document.body.style.visibility = "visible";
-    document.getElementById("greeting").textContent = me.full_name || me.username;
-    const avatarEl = document.getElementById("avatarEl");
-    const rolePill = document.getElementById("rolePill");
-    if (avatarEl) avatarEl.textContent = (me.full_name || me.username).substring(0,2).toUpperCase();
-    if (rolePill) rolePill.textContent = me.role.charAt(0).toUpperCase() + me.role.slice(1);
-  } catch {
-    window.location.replace("index.html"); return;
-  }
-
-  try {
-    const data        = await apiSubmissions();
-    const submissions = data.submissions || [];
-    renderStats(submissions);
-    renderRecentList(submissions.slice(0, 4));
-  } catch {
-    toast("Could not load submissions.", "warning");
-  }
-
-  loadRepositoryStatus();
-  loadKioskSessions();
+    const name = me.full_name || me.username || 'Librarian';
+    byDashboardId('greeting').textContent = `Welcome, ${name}.`;
+    if (byDashboardId('avatarEl')) byDashboardId('avatarEl').textContent = name.substring(0, 2).toUpperCase();
+    if (byDashboardId('rolePill')) byDashboardId('rolePill').textContent = 'Librarian';
+    document.body.style.visibility = 'visible';
+  } catch { location.replace('index.html'); return; }
+  byDashboardId('refreshHealth').addEventListener('click', loadRepositoryStatus);
+  byDashboardId('retryMetrics').addEventListener('click', loadDashboardMetrics);
+  await Promise.allSettled([loadDashboardMetrics(), loadRecentSubmissions(), loadRepositoryStatus(), loadKioskSessions()]);
 }
-
-initPage();
-
-/* ── Library Terminal sessions (session-scoped kiosk lock) ───────────────── */
-
+let metricsLoading = false;
+async function loadDashboardMetrics() {
+  if (metricsLoading) return;
+  metricsLoading = true;
+  const ids = ['statTotal', 'statPending', 'statApproved', 'statUsers', 'statReturned'];
+  ids.forEach(id => dashboardLoading(byDashboardId(id), 'Loading...'));
+  byDashboardId('dashboardMetrics').setAttribute('aria-busy', 'true');
+  byDashboardId('retryMetrics').hidden = true;
+  byDashboardId('metricsStatus').textContent = '';
+  renderReviewQueue(null, true);
+  try {
+    const data = await apiDashboardStats();
+    // The existing endpoint names returned papers "rejected_research"; the model is returned.
+    const values = [data.total_research, data.ongoing_research, data.approved_research, data.total_users, data.rejected_research];
+    ids.forEach((id, i) => byDashboardId(id).textContent = displayCount(values[i]));
+    renderReviewQueue(data.ongoing_research);
+    if (values.some(value => !validCount(value))) {
+      byDashboardId('metricsStatus').textContent = 'Some counts are unavailable. Try refreshing the counts.';
+      byDashboardId('retryMetrics').hidden = false;
+    }
+  } catch {
+    ids.forEach(id => byDashboardId(id).textContent = 'Unavailable');
+    byDashboardId('metricsStatus').textContent = 'Repository counts could not be loaded.';
+    byDashboardId('retryMetrics').hidden = false;
+    renderReviewQueue(null);
+  } finally {
+    metricsLoading = false;
+    byDashboardId('dashboardMetrics').setAttribute('aria-busy', 'false');
+  }
+}
+function renderReviewQueue(pending, loading = false) {
+  const panel = byDashboardId('reviewQueueStatus');
+  const known = validCount(pending);
+  panel.dataset.state = loading ? 'loading' : !known ? 'unavailable' : pending ? 'pending' : 'clear';
+  byDashboardId('queueTitle').textContent = loading ? 'Checking review queue�' : !known ? 'Review queue status unavailable' : pending ? `${displayCount(pending)} ${pending === 1 ? 'submission needs' : 'submissions need'} review` : 'Review queue is clear';
+  byDashboardId('pendingMsg').textContent = loading ? 'Loading submission counts.' : !known ? 'Open the review queue to check submissions.' : pending ? 'Review the latest submissions and provide a decision.' : 'No submissions are waiting for review.';
+  byDashboardId('reviewQueueAction').hidden = loading || (known && pending === 0);
+}
+let recentLoading = false;
+async function loadRecentSubmissions() {
+  if (recentLoading) return;
+  recentLoading = true;
+  const list = byDashboardId('recentList');
+  list.setAttribute('aria-busy', 'true');
+  dashboardLoading(list, 'Loading recent submissions...', 3);
+  try {
+    const data = await apiSubmissions();
+    if (!Array.isArray(data.submissions)) throw new Error('Invalid submissions response');
+    const submissions = [...data.submissions].sort((a,b) => (dashboardTimestamp(b.submitted_at) || 0) - (dashboardTimestamp(a.submitted_at) || 0));
+    renderRecentList(submissions.slice(0, 5));
+  } catch { panelMessage(list, 'Recent submissions could not be loaded.', loadRecentSubmissions); }
+  finally { recentLoading = false; list.setAttribute('aria-busy', 'false'); }
+}
+function renderRecentList(submissions) {
+  const list = byDashboardId('recentList');
+  if (!submissions.length) { panelMessage(list, 'No submissions yet. New research will appear here.'); return; }
+  const table = dashboardNode('table', 'dashboard-table');
+  const caption = dashboardNode('caption', 'dashboard-sr-only', 'Five most recent research submissions, newest first');
+  const head = document.createElement('thead'), headings = document.createElement('tr');
+  ['Research', 'Submitted', 'Status', 'Open'].forEach(label => { const cell = dashboardNode('th', '', label); cell.scope = 'col'; headings.appendChild(cell); });
+  head.appendChild(headings);
+  const body = document.createElement('tbody');
+  submissions.forEach(paper => {
+    const row = document.createElement('tr');
+    const research = dashboardNode('td', 'dashboard-research');
+    research.append(dashboardNode('span', 'dashboard-research-title', paper.title || 'Untitled research'), dashboardNode('span', 'dashboard-muted', [paper.lead_researcher || 'Authors unavailable', paper.department || 'College unavailable'].join(' � ')));
+    const submitted = dashboardNode('td', 'dashboard-date', dashboardDate(paper.submitted_at));
+    submitted.dataset.label = 'Submitted';
+    const status = document.createElement('td'); status.dataset.label = 'Status';
+    const statuses = {approved:'Approved', pending:'Pending review', returned:'Returned'};
+    const badge = dashboardNode('span', `dashboard-badge ${Object.hasOwn(statuses, paper.status) ? paper.status : ''}`, statuses[paper.status] || 'Status unavailable');
+    status.appendChild(badge);
+    const action = document.createElement('td'); action.className = 'dashboard-open';
+    const href = paper.status === 'approved' && paper.source ? `detail.html?id=${encodeURIComponent(paper.source)}` : `review.html?id=${encodeURIComponent(paper.id)}`;
+    const link = dashboardNode('a', '', 'Open ');
+    link.href = href;
+    link.setAttribute('aria-label', `Open ${paper.title || 'research submission'}`);
+    link.appendChild(createUiIcon('arrow-right'));
+    action.appendChild(link); row.append(research, submitted, status, action); body.appendChild(row);
+  });
+  table.append(caption, head, body); list.replaceChildren(table);
+}
+let sessionsLoading = false;
 async function loadKioskSessions() {
-  const list = document.getElementById("kioskSessionList");
-  if (!list) return;
-  list.innerHTML = "";
-
-  let sessions = [];
+  if (sessionsLoading) return;
+  sessionsLoading = true;
+  const list = byDashboardId('kioskSessionList');
+  const focused = list.contains(document.activeElement) ? {sid:document.activeElement.dataset.sid, action:document.activeElement.dataset.action} : null;
+  list.setAttribute('aria-busy', 'true');
+  dashboardLoading(byDashboardId('kioskSessionCount'), 'Loading...');
+  dashboardLoading(list, 'Loading terminal sessions...', 1);
   try {
     const data = await apiKioskSessions();
-    sessions = data.sessions || [];
-  } catch {
-    const err = document.createElement("p");
-    err.className   = "text-muted";
-    err.textContent = "Could not load terminal sessions.";
-    list.appendChild(err);
-    return;
-  }
-
-  if (sessions.length === 0) {
-    const empty = document.createElement("p");
-    empty.className   = "text-muted";
-    empty.textContent = "No Library Viewing Station sessions are active.";
-    list.appendChild(empty);
-    return;
-  }
-
-  sessions.forEach(s => {
-    const row = document.createElement("div");
-    row.className = "recent-item";
-
-    const left = document.createElement("div");
-
-    const title = document.createElement("div");
-    title.className   = "recent-item-title";
-    title.textContent = s.user;
-
-    const meta = document.createElement("div");
-    meta.className   = "recent-item-meta";
-    meta.textContent = `${s.role} · ${s.updated_at ? s.updated_at.slice(0, 16).replace("T", " ") : ""}`;
-
-    left.appendChild(title);
-    left.appendChild(meta);
-
-    const right = document.createElement("div");
-    right.style.cssText = "display:flex;align-items:center;gap:8px;";
-
-    const badge = document.createElement("span");
-    badge.className = s.locked ? "badge badge-rejected" : "badge badge-validated";
-    badge.textContent = s.locked ? "locked" : "open";
-    right.appendChild(badge);
-
-    const btn = document.createElement("button");
-    btn.className = "btn btn-ghost btn-sm";
-    btn.textContent = s.locked ? "Unlock" : "Lock";
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      try {
-        await apiKioskSetLockFor(s.sid, !s.locked);
-        toast(s.locked ? "Terminal session unlocked." : "Terminal session locked.", "success");
-        await loadKioskSessions();
-      } catch (e) {
-        toast(`Lock failed: ${e.message}`, "error");
-        btn.disabled = false;
+    if (!Array.isArray(data.sessions)) throw new Error('Invalid sessions response');
+    const sessions = data.sessions.filter(session => session.is_kiosk === true);
+    byDashboardId('kioskSessionCount').textContent = displayCount(sessions.length);
+    list.replaceChildren();
+    if (!sessions.length) panelMessage(list, 'No library terminal sessions are active.');
+    sessions.forEach(session => {
+      const row = dashboardNode('article', 'dashboard-session');
+      row.append(dashboardNode('h3', '', session.user || 'User unavailable'), dashboardNode('p', 'dashboard-muted', `${session.role || 'Role unavailable'} � ${dashboardDate(session.updated_at, true)}`));
+      const controls = dashboardNode('div', 'dashboard-session-actions');
+      controls.appendChild(dashboardNode('span', 'dashboard-badge', session.locked ? 'Locked' : 'Open'));
+      const status = dashboardNode('p', 'dashboard-action-status'); status.setAttribute('role','status');
+      const buttons = [];
+      for (const action of ['lock', 'terminate']) {
+        const button = dashboardNode('button', 'btn btn-ghost btn-sm', action === 'lock' ? session.locked ? 'Unlock' : 'Lock' : 'Terminate');
+        button.type = 'button'; button.dataset.sid = session.sid; button.dataset.action = action;
+        button.setAttribute('aria-label', `${button.textContent} terminal session for ${session.user || 'user'}`);
+        button.addEventListener('click', async () => {
+          if (action === 'terminate' && !confirm(`Terminate the terminal session of "${session.user}"?\nIt will be removed from this list and any page lock on it will be lifted.`)) return;
+          buttons.forEach(btn => btn.disabled = true); status.textContent = 'Updating session�';
+          try {
+            if (action === 'lock') await apiKioskSetLockFor(session.sid, !session.locked);
+            else await apiKioskTerminate(session.sid);
+            await loadKioskSessions();
+          } catch (error) { status.textContent = `Session update failed: ${error.message}`; buttons.forEach(btn => btn.disabled = false); }
+        });
+        buttons.push(button); controls.appendChild(button);
       }
+      row.append(controls, status); list.appendChild(row);
     });
-    right.appendChild(btn);
-
-    const endBtn = document.createElement("button");
-    endBtn.className   = "btn btn-ghost btn-sm";
-    endBtn.textContent = "Terminate";
-    endBtn.title       = "Remove this terminal session from the list";
-    endBtn.addEventListener("click", async () => {
-      const ok = confirm(
-        `Terminate the terminal session of "${s.user}"?\n\n` +
-        `It will be removed from this list and any page lock on it will be lifted.`
-      );
-      if (!ok) return;
-      endBtn.disabled = true;
-      try {
-        await apiKioskTerminate(s.sid);
-        toast("Terminal session terminated.", "success");
-        await loadKioskSessions();
-      } catch (e) {
-        toast(`Terminate failed: ${e.message}`, "error");
-        endBtn.disabled = false;
-      }
-    });
-    right.appendChild(endBtn);
-
-    row.appendChild(left);
-    row.appendChild(right);
-    list.appendChild(row);
-  });
-
-  staggerIn(list);
-}
-
-function renderStats(submissions) {
-  const total     = submissions.length;
-  const pending   = submissions.filter(s => s.status === "pending").length;
-  const validated = submissions.filter(s => s.status === "approved").length;
-  const returned  = submissions.filter(s => s.status === "returned").length;
-
-  document.getElementById("statTotal").textContent     = total;
-  document.getElementById("statPending").textContent   = pending;
-  document.getElementById("statValidated").textContent = validated;
-  document.getElementById("statRejected").textContent  = returned;
-
-  document.getElementById("pendingMsg").textContent =
-    `${pending} research paper${pending !== 1 ? "s" : ""} awaiting review and validation.`;
-}
-
-function renderRecentList(submissions) {
-  const list = document.getElementById("recentList");
-  list.innerHTML = "";
-
-  if (submissions.length === 0) {
-    const empty = document.createElement("p");
-    empty.className   = "text-muted";
-    empty.textContent = "No submissions yet.";
-    list.appendChild(empty);
-    return;
-  }
-
-  submissions.forEach(s => {
-    const row = document.createElement("div");
-    row.className = "recent-item";
-
-    const left = document.createElement("div");
-
-    const title = document.createElement("div");
-    title.className   = "recent-item-title";
-    title.textContent = s.title;
-
-    const meta = document.createElement("div");
-    meta.className   = "recent-item-meta";
-    meta.textContent = `${s.lead_researcher || "Unknown"} · ${s.submitted_at?.slice(0, 10) || ""}`;
-
-    left.appendChild(title);
-    left.appendChild(meta);
-
-    const right = document.createElement("div");
-    right.style.cssText = "display:flex;align-items:center;gap:8px;";
-
-    const badge = document.createElement("span");
-    badge.className   = `badge badge-${s.status}`;
-    badge.textContent = s.status;
-    right.appendChild(badge);
-
-    if (currentUserRole === "librarian") {
-      const delBtn = document.createElement("button");
-      delBtn.className   = "btn btn-ghost btn-sm";
-      delBtn.textContent = "🗑";
-      delBtn.title       = "Permanently delete this paper";
-      delBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        confirmDeletePaper(s.id, s.title);   // ← changed from s.source_stem
-      });
-      right.appendChild(delBtn);
+    if (focused) {
+      const target = [...list.querySelectorAll('button')].find(btn => btn.dataset.sid === focused.sid && btn.dataset.action === focused.action);
+      (target || document.querySelector('.dashboard-terminal-link')).focus({preventScroll:true});
     }
-
-    row.appendChild(left);
-    row.appendChild(right);
-    list.appendChild(row);
-  });
-
-  staggerIn(list); // subtle staggered fade-in, from motion.js
+  } catch { byDashboardId('kioskSessionCount').textContent = 'Unavailable'; panelMessage(list, 'Terminal sessions could not be loaded.', loadKioskSessions); }
+  finally { sessionsLoading = false; list.setAttribute('aria-busy','false'); }
 }
-
-async function confirmDeletePaper(id, title) {
-  const ok = confirm(
-    `Permanently delete "${title}"?\n\n` +
-    `This removes it from the repository, the search index, and disk. ` +
-    `This cannot be undone.`
-  );
-  if (!ok) return;
-
-  try {
-    await apiDeletePaper(id);
-    toast(`"${title}" deleted.`, "success");
-    await refreshDashboard();
-  } catch (e) {
-    toast(`Delete failed: ${e.message}`, "error");
-  }
-}
-
-async function refreshDashboard() {
-  try {
-    const data        = await apiSubmissions();
-    const submissions = data.submissions || [];
-    renderStats(submissions);
-    renderRecentList(submissions.slice(0, 4));
-  } catch {
-    toast("Could not refresh submissions.", "warning");
-  }
-}
-
+let healthLoading = false;
 async function loadRepositoryStatus() {
+  if (healthLoading) return;
+  healthLoading = true;
+  const panel = byDashboardId('repositoryStatus'), badge = byDashboardId('healthState'), refresh = byDashboardId('refreshHealth');
+  refresh.disabled = true; badge.textContent = 'Loading'; badge.dataset.state = 'loading';
+  dashboardLoading(panel, 'Loading repository status...', 1);
   try {
     const data = await apiStatus();
-    if (data.chunks_indexed > 0) {
-      toast(`Repository: ${data.chunks_indexed} chunks indexed in ChromaDB`, "success");
+    if (!validCount(data.chunks_indexed)) {
+      badge.textContent = 'Degraded'; badge.dataset.state = 'degraded';
+      panel.textContent = 'The search index is unavailable. Search and research insights may be affected. The index size could not be checked.';
+    } else if (data.chunks_indexed === 0 && data.approved > 0) {
+      badge.textContent = 'Degraded'; badge.dataset.state = 'degraded';
+      panel.textContent = 'Approved papers are present, but the search index is empty. These papers may not appear in search or research insights. Please ask the repository maintainer to check the index.';
+    } else if (data.status !== 'ok') {
+      badge.textContent = 'Degraded'; badge.dataset.state = 'degraded';
+      panel.textContent = data.message || 'Some repository services need attention.';
+    } else {
+      badge.textContent = 'Healthy'; badge.dataset.state = 'healthy';
+      panel.textContent = data.chunks_indexed === 0 ? 'No approved papers yet. The search index is empty.' : `${displayCount(data.chunks_indexed)} searchable passages indexed. Repository search is available.`;
     }
   } catch {
-    /* Silent — non-critical */
-  }
+    badge.textContent = 'Unavailable'; badge.dataset.state = 'unavailable';
+    panel.textContent = 'Repository health could not be checked. Try refreshing the status.';
+  } finally { healthLoading = false; refresh.disabled = false; }
 }
+initPage();

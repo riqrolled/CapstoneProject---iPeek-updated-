@@ -1,6 +1,10 @@
 /**
  * page-fade.js
  * -------------
+ * Authenticated pages load this deferred script with blocking="render" so
+ * the shared navigation is built before the first paint of the new document.
+ * Auth still gates the main content independently.
+ *
  * Subtle page-entry animation, applied automatically on every page —
  * purely observational, requires no changes to any existing page
  * script for the STATIC part of this. Every authenticated page
@@ -11,7 +15,8 @@
  *
  * This script watches for that exact moment (via MutationObserver on
  * body's style attribute) and:
- *   1. Adds .page-fade-in to <body> — a brief whole-page fade+rise.
+ *   1. Adds .page-fade-in to <body> — CSS fades only the page content,
+ *      keeping the desktop navbar, mobile header, and bottom tabs steady.
  *   2. Finds every static card-like block already sitting in the DOM
  *      (stat cards, profile cards, the upload card, detail-page
  *      cards, etc.) and staggers a fade-in across them individually.
@@ -46,13 +51,15 @@
     });
   }
 
-  const observer = new MutationObserver(() => {
+  function revealContent() {
     if (body.style.visibility === "visible") {
       body.classList.add("page-fade-in");
       staggerStaticBlocks();
       observer.disconnect();
     }
-  });
+  }
+  const observer = new MutationObserver(revealContent);
 
   observer.observe(body, { attributes: true, attributeFilter: ["style"] });
+  revealContent(); // Auth may already have completed before this deferred script.
 })();

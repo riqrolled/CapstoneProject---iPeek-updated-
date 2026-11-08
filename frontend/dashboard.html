@@ -8,8 +8,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <script src="js/page-fade.js" defer blocking="render"></script>
 </head>
-<body style="visibility:hidden;">
+<body class="dashboard-page" style="visibility:hidden;">
   <nav class="navbar">
     <div class="nav-brand">
       <div class="nav-logo">i</div>
@@ -23,70 +25,48 @@
     </div>
   </nav>
 
-  <div class="main" style="max-width:1100px;margin:0 auto;">
-
-    <div class="mb-lg">
-      <p class="text-muted greeting-sub">Good morning,</p>
-      <h2 id="greeting"></h2>
-    </div>
-
-    <!-- Stat cards — uses class for mobile horizontal scroll -->
-    <div class="stat-grid stat-grid-mobile">
-      <div class="stat-card">
-        <div class="stat-num" id="statTotal">—</div>
-        <div class="stat-lbl">Total Research</div>
+  <main class="dashboard-main">
+    <header class="dashboard-heading">
+      <div><h1>Repository overview</h1><p id="greeting" class="dashboard-muted">Welcome.</p></div>
+      <a class="btn btn-accent" href="upload.html"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#upload"/></svg> Upload research</a>
+    </header>
+    <section aria-label="Repository metrics">
+      <div class="dashboard-metrics" id="dashboardMetrics" aria-busy="true">
+      <a class="dashboard-metric" href="review.html"><span class="metric-label"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#document"/></svg> Total Research</span><strong id="statTotal" class="metric-value" aria-live="polite">Loading?</strong></a>
+      <a class="dashboard-metric" href="review.html?status=pending"><span class="metric-label"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#my-submissions"/></svg> Pending Review</span><strong id="statPending" class="metric-value" aria-live="polite">Loading?</strong></a>
+      <a class="dashboard-metric" href="browse.html"><span class="metric-label"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#review"/></svg> Approved</span><strong id="statApproved" class="metric-value" aria-live="polite">Loading?</strong></a>
+      <a class="dashboard-metric" href="users.html"><span class="metric-label"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#users"/></svg> Registered Users</span><strong id="statUsers" class="metric-value" aria-live="polite">Loading?</strong><span class="metric-note">All roles, including inactive accounts</span></a>
       </div>
-      <div class="stat-card hi">
-        <div class="stat-num" id="statPending">—</div>
-        <div class="stat-lbl">Pending Review</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-num" id="statValidated">—</div>
-        <div class="stat-lbl">Validated</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-num" id="statRejected">—</div>
-        <div class="stat-lbl">Rejected</div>
-      </div>
-    </div>
-
-    <div class="dash-grid">
-      <div class="card">
-        <div class="card-header-row">
-          <h3>Recent Submissions</h3>
-          <a href="review.html" class="view-all-link">View all →</a>
-        </div>
-        <div id="recentList"></div>
-      </div>
-
-      <div class="card">
-        <h3 class="mb-md">Quick Actions</h3>
-        <div class="action-alert">
-          <div class="action-alert-title">Action Required</div>
-          <div class="action-alert-body" id="pendingMsg">Loading...</div>
-        </div>
-        <div class="quick-actions">
-          <button class="btn btn-primary" onclick="location.href='review.html'">Validate Research</button>
-          <button class="btn btn-ghost" onclick="location.href='users.html'">Manage Users</button>
-          <button class="btn btn-ghost" onclick="location.href='upload.html'">Upload Study</button>
-          <button class="btn btn-ghost" onclick="location.href='browse.html'">Search Repo</button>
-          <button class="btn btn-ghost" onclick="location.href='profile.html'">Edit Profile</button>
-          <button class="btn btn-ghost" onclick="location.href='library.html'">Library Terminal</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header-row">
-          <h3>Library Terminal Sessions</h3>
-        </div>
-        <div id="kioskSessionList"></div>
+      <div class="dashboard-secondary"><a href="review.html?status=returned">Returned <strong id="statReturned">Loading?</strong></a><p id="metricsStatus" class="dashboard-muted" role="status"></p><button type="button" class="btn btn-ghost btn-sm" id="retryMetrics" hidden>Retry counts</button></div>
+    </section>
+    <section id="reviewQueueStatus" class="dashboard-review-strip" data-state="loading" aria-label="Review queue" aria-live="polite">
+      <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#review"/></svg><div><h2 id="queueTitle">Checking review queue?</h2><p id="pendingMsg">Loading submission counts.</p></div>
+      <a id="reviewQueueAction" class="btn btn-primary" href="review.html?status=pending" hidden>Review submissions <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#arrow-right"/></svg></a>
+    </section>
+    <div class="dashboard-columns">
+      <section class="dashboard-card dashboard-recent" aria-labelledby="recentHeading">
+        <header class="dashboard-card-heading"><h2 id="recentHeading">Recent submissions</h2><a href="review.html">View all <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#arrow-right"/></svg></a></header>
+        <div id="recentList" aria-busy="true"><p class="dashboard-panel-message" role="status">Loading recent submissions?</p></div>
+      </section>
+      <div class="dashboard-side">
+        <section class="dashboard-card" aria-labelledby="healthHeading">
+          <header class="dashboard-card-heading"><h2 id="healthHeading">Repository health</h2><span id="healthState" class="dashboard-state" data-state="loading">Loading</span></header>
+          <p id="repositoryStatus" class="dashboard-panel-message" role="status">Loading repository status?</p>
+          <button type="button" class="btn btn-ghost btn-sm" id="refreshHealth">Refresh status</button>
+        </section>
+        <section class="dashboard-card" aria-labelledby="terminalHeading">
+          <header class="dashboard-card-heading"><h2 id="terminalHeading">Library terminal</h2><a href="library.html" aria-label="Open Library Terminal"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#arrow-right"/></svg></a></header>
+          <p class="dashboard-session-count"><strong id="kioskSessionCount" aria-live="polite">Loading?</strong> <span>active sessions</span></p>
+          <div id="kioskSessionList" aria-busy="true"><p class="dashboard-muted">Loading terminal sessions?</p></div>
+          <a class="dashboard-terminal-link" href="library.html">Library Terminal <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#arrow-right"/></svg></a>
+        </section>
       </div>
     </div>
-  </div>
+    <nav class="dashboard-quick" aria-label="Quick access"><span>Quick access</span><a href="review.html"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#review"/></svg> Review Queue</a><a href="users.html"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#users"/></svg> Manage Users</a><a href="browse.html"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icons.svg#browse"/></svg> Browse Repository</a></nav>
+  </main>
 
   <div class="toast-wrap" id="toasts"></div>
 
-  <script src="js/page-fade.js"></script>
   <script src="js/api.js"></script>
   <script src="js/pillnav.js"></script>
   <script src="js/motion.js"></script>
